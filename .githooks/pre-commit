@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+branch=$(git branch --show-current)
+
+# Detached HEAD (rebase, cherry-pick) has no branch to check.
+if [ -n "$branch" ] && ! echo "$branch" | grep -qE '^feature/KUSS-[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$'; then
+  echo "Invalid branch name: $branch"
+  echo "  Expected: feature/KUSS-<number>-<short-description> (lowercase kebab-case)"
+  echo "  Example:  feature/KUSS-12-booking-concurrency"
+  exit 1
+fi
+
+secrets=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)\.env(\..+)?$' | grep -vE '\.env\.example$')
+if [ -n "$secrets" ]; then
+  echo "Refusing to commit env files:"
+  echo "$secrets"
+  exit 1
+fi

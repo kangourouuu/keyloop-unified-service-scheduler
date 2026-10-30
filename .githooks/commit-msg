@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+subject=$(sed -n '1p' "$1")
+
+case "$subject" in
+  Merge\ *|Revert\ *|fixup!*|squash!*) exit 0 ;;
+esac
+
+if ! echo "$subject" | grep -qE '^\[KUSS-[0-9]+\] [^ ].*$'; then
+  echo "Invalid commit message: $subject"
+  echo "  Expected: [KUSS-<number>] Description"
+  echo "  Example:  [KUSS-12] Add conditional insert for bay booking"
+  exit 1
+fi
+
+branch_id=$(git branch --show-current | grep -oE 'KUSS-[0-9]+' | head -1)
+msg_id=$(echo "$subject" | grep -oE 'KUSS-[0-9]+' | head -1)
+if [ -n "$branch_id" ] && [ "$branch_id" != "$msg_id" ]; then
+  echo "Commit story $msg_id does not match branch story $branch_id"
+  exit 1
+fi
