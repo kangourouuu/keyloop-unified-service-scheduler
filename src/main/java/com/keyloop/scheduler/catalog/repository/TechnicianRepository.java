@@ -11,7 +11,7 @@ public interface TechnicianRepository extends JpaRepository<TechnicianEntity, UU
 
   @Query(
       "select t.id from TechnicianEntity t join t.skillCodes s "
-          + "where t.dealershipId = :dealershipId and t.active = true and s = :serviceTypeCode")
+          + "where t.dealershipId = :dealershipId and t.isActive = true and s = :serviceTypeCode")
   List<UUID> findQualifiedActiveIds(
       @Param("dealershipId") UUID dealershipId, @Param("serviceTypeCode") String serviceTypeCode);
 

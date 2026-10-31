@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: "kuss"
       POSTGRES_USER: "kuss"
-      POSTGRES_PASSWORD: "kuss"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-kuss}"
     command:
     - "postgres"
     - "-c"
@@ -24,6 +24,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: "prod"
       SPRING_DATASOURCE_URL: "jdbc:postgresql://db:5432/kuss"
+      SPRING_DATASOURCE_PASSWORD: "${POSTGRES_PASSWORD:-kuss}"
     ports:
     - "8080:8080"
     restart: "on-failure"

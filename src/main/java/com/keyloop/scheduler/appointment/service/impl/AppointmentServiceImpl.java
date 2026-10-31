@@ -3,51 +3,33 @@ package com.keyloop.scheduler.appointment.service.impl;
 import com.keyloop.scheduler.appointment.dto.AppointmentDto;
 import com.keyloop.scheduler.appointment.dto.AppointmentResultDto;
 import com.keyloop.scheduler.appointment.dto.BookAppointmentDto;
-import com.keyloop.scheduler.appointment.dto.CandidateDto;
-import com.keyloop.scheduler.appointment.dto.TechnicianLoadDto;
 import com.keyloop.scheduler.appointment.entity.AppointmentEntity;
 import com.keyloop.scheduler.appointment.entity.AppointmentStatus;
 import com.keyloop.scheduler.appointment.mapper.AppointmentMapper;
 import com.keyloop.scheduler.appointment.repository.AppointmentRepository;
 import com.keyloop.scheduler.appointment.service.AppointmentService;
 import com.keyloop.scheduler.appointment.service.IdempotencyService;
-import com.keyloop.scheduler.appointment.util.CandidateSelectionUtils;
+import com.keyloop.scheduler.appointment.util.BookingErrorUtils;
 import com.keyloop.scheduler.catalog.entity.DealershipEntity;
-import com.keyloop.scheduler.catalog.entity.ServiceTypeEntity;
-import com.keyloop.scheduler.catalog.entity.VehicleEntity;
-import com.keyloop.scheduler.catalog.repository.DealershipRepository;
-import com.keyloop.scheduler.catalog.repository.ServiceTypeRepository;
-import com.keyloop.scheduler.catalog.repository.VehicleRepository;
+import com.keyloop.scheduler.catalog.service.CatalogService;
 import com.keyloop.scheduler.common.constants.ApiPathConstants;
 import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
 import com.keyloop.scheduler.common.constants.MetricConstants;
 import com.keyloop.scheduler.common.constants.RequestConstants;
 import com.keyloop.scheduler.common.error.ErrorCode;
 import com.keyloop.scheduler.common.error.SchedulerException;
-import com.keyloop.scheduler.common.util.SqlErrorUtils;
 import com.keyloop.scheduler.common.util.TimeSlotUtils;
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.MeterRegistry;
-import jakarta.annotation.PostConstruct;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-import lombok.Builder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
-import org.springframework.dao.QueryTimeoutException;
+import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -59,75 +41,37 @@ import org.springframework.transaction.support.TransactionTemplate;
 class AppointmentServiceImpl implements AppointmentService {
 
   private static final int MAX_ATTEMPTS = 100;
-  private static final String VEHICLE_OVERLAP_CONSTRAINT = "excl_appointment_vehicle_overlap";
-  private static final String BAY_OVERLAP_CONSTRAINT = "excl_appointment_bay_overlap";
-  private static final String CONFLICT_BAY = "bay";
-  private static final String CONFLICT_TECHNICIAN = "technician";
-  private static final String CONFLICT_DEADLOCK = "deadlock";
-  private static final String DEADLOCK_STATE = "40P01";
-  private static final Set<String> RETRYABLE_STATES = Set.of("23P01", DEADLOCK_STATE);
-  private static final String CONFIRMED_RESULT = "confirmed";
-  private static final Set<String> BOOKING_RESULTS =
-      Set.of(
-          CONFIRMED_RESULT,
-          ErrorCode.KUSS_VALIDATION_FAILED.name(),
-          ErrorCode.KUSS_IDEMPOTENCY_KEY_MISSING.name(),
-          ErrorCode.KUSS_RESOURCE_NOT_FOUND.name(),
-          ErrorCode.KUSS_INTERNAL_ERROR.name(),
-          ErrorCode.KUSS_SERVICE_BUSY.name(),
-          ErrorCode.KUSS_NO_CAPACITY.name(),
-          ErrorCode.KUSS_VEHICLE_ALREADY_BOOKED.name(),
-          ErrorCode.KUSS_IDEMPOTENCY_IN_FLIGHT.name(),
-          ErrorCode.KUSS_IDEMPOTENCY_KEY_MISMATCH.name());
-  private static final Set<String> TRACKED_SERVICE_TYPE_RESULTS =
-      Set.of(
-          CONFIRMED_RESULT,
-          ErrorCode.KUSS_NO_CAPACITY.name(),
-          ErrorCode.KUSS_VEHICLE_ALREADY_BOOKED.name());
 
   private final Clock clock;
-  private final DealershipRepository dealershipRepository;
-  private final VehicleRepository vehicleRepository;
-  private final ServiceTypeRepository serviceTypeRepository;
+  private final CatalogService catalogService;
   private final AppointmentRepository appointmentRepository;
   private final AppointmentMapper appointmentMapper;
   private final IdempotencyService idempotencyService;
   private final TransactionTemplate transactionTemplate;
-  private final Map<String, Counter> retryCounters;
-  private final MeterRegistry meterRegistry;
+  private final BookingAttempt bookingAttempt;
+  private final BookingConflictHandler conflictHandler;
+  private final BookingMetrics bookingMetrics;
 
   AppointmentServiceImpl(
       Clock clock,
-      DealershipRepository dealershipRepository,
-      VehicleRepository vehicleRepository,
-      ServiceTypeRepository serviceTypeRepository,
+      CatalogService catalogService,
       AppointmentRepository appointmentRepository,
       AppointmentMapper appointmentMapper,
       IdempotencyService idempotencyService,
       PlatformTransactionManager transactionManager,
-      MeterRegistry meterRegistry) {
+      BookingAttempt bookingAttempt,
+      BookingConflictHandler conflictHandler,
+      BookingMetrics bookingMetrics) {
     this.clock = clock;
-    this.dealershipRepository = dealershipRepository;
-    this.vehicleRepository = vehicleRepository;
-    this.serviceTypeRepository = serviceTypeRepository;
+    this.catalogService = catalogService;
     this.appointmentRepository = appointmentRepository;
     this.appointmentMapper = appointmentMapper;
     this.idempotencyService = idempotencyService;
     this.transactionTemplate = new TransactionTemplate(transactionManager);
     this.transactionTemplate.setTimeout(RequestConstants.TRANSACTION_TIMEOUT_SECONDS);
-    this.retryCounters = registerRetryCounters(meterRegistry);
-    this.meterRegistry = meterRegistry;
-  }
-
-  private static Map<String, Counter> registerRetryCounters(MeterRegistry meterRegistry) {
-    return Stream.of(CONFLICT_BAY, CONFLICT_TECHNICIAN, CONFLICT_DEADLOCK)
-        .collect(
-            Collectors.toMap(
-                Function.identity(),
-                conflictType ->
-                    Counter.builder(MetricConstants.BOOKING_GIST_RETRIES)
-                        .tag(MetricConstants.TAG_CONFLICT_TYPE, conflictType)
-                        .register(meterRegistry)));
+    this.bookingAttempt = bookingAttempt;
+    this.conflictHandler = conflictHandler;
+    this.bookingMetrics = bookingMetrics;
   }
 
   /**
@@ -144,199 +88,35 @@ class AppointmentServiceImpl implements AppointmentService {
     String result = ErrorCode.KUSS_INTERNAL_ERROR.name();
     try {
       AppointmentResultDto booked = bookWithRetry(request, idempotencyKey);
-      result = CONFIRMED_RESULT;
+      result = MetricConstants.RESULT_CONFIRMED;
       return booked;
     } catch (SchedulerException ex) {
       result = ex.getCode().name();
       throw ex;
     } finally {
-      recordBooking(request, result);
+      bookingMetrics.recordBooking(request, result);
     }
-  }
-
-  private void recordBooking(BookAppointmentDto request, String result) {
-    String serviceType =
-        TRACKED_SERVICE_TYPE_RESULTS.contains(result)
-            ? request.serviceTypeCode()
-            : MetricConstants.UNKNOWN_SERVICE_TYPE;
-    bookingCounter(serviceType, result).increment();
-  }
-
-  @PostConstruct
-  void registerBookingMeters() {
-    List<String> serviceTypeCodes =
-        serviceTypeRepository.findByActiveTrueOrderByCode().stream()
-            .map(ServiceTypeEntity::getCode)
-            .toList();
-    BOOKING_RESULTS.forEach(result -> {
-      bookingCounter(MetricConstants.UNKNOWN_SERVICE_TYPE, result);
-      if (TRACKED_SERVICE_TYPE_RESULTS.contains(result)) {
-        serviceTypeCodes.forEach(code -> bookingCounter(code, result));
-      }
-    });
-  }
-
-  private Counter bookingCounter(String serviceType, String result) {
-    return meterRegistry.counter(
-        MetricConstants.BOOKING_REQUESTS,
-        MetricConstants.TAG_SERVICE_TYPE,
-        serviceType,
-        MetricConstants.TAG_RESULT,
-        result);
   }
 
   private AppointmentResultDto bookWithRetry(BookAppointmentDto request, String idempotencyKey) {
     BookingDeadline deadline = BookingDeadline.startingNow(clock);
     for (int attempt = 1; attempt <= MAX_ATTEMPTS && !deadline.isExpired(); attempt++) {
       try {
-        return transactionTemplate.execute(status -> bookOnce(request, idempotencyKey));
+        return transactionTemplate.execute(
+            status -> bookingAttempt.bookOnce(request, idempotencyKey));
       } catch (DataAccessException ex) {
-        handleConflict(ex, deadline, attempt < MAX_ATTEMPTS);
+        conflictHandler.handle(ex, deadline, attempt < MAX_ATTEMPTS);
       } catch (CannotCreateTransactionException ex) {
         log.warn("Booking aborted, no database connection: {}", ex.getMessage());
-        throw serviceBusy();
+        throw BookingErrorUtils.serviceBusy();
       }
     }
     if (deadline.isExpired()) {
-      throw deadlineReached();
+      throw BookingErrorUtils.deadlineReached();
     }
     log.error(
         "Booking retry cap {} reached, dealershipId={}", MAX_ATTEMPTS, request.dealershipId());
-    throw bookingNotCompleted();
-  }
-
-  private AppointmentResultDto bookOnce(BookAppointmentDto request, String idempotencyKey) {
-    Optional<AppointmentResultDto> replay =
-        idempotencyService.claim(idempotencyKey, canonicalRequest(request));
-    if (replay.isPresent()) {
-      return replay.get();
-    }
-    Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
-    BookingContext context = loadAndValidate(request, now);
-    CandidateDto candidate = pickCandidate(context);
-    AppointmentDto appointment = newAppointment(request, context, candidate, now);
-    appointmentRepository.saveAndFlush(appointmentMapper.toEntity(appointment));
-    AppointmentResultDto result =
-        AppointmentResultDto.builder().httpStatus(201).appointment(appointment).build();
-    idempotencyService.complete(idempotencyKey, result);
-    return result;
-  }
-
-  private BookingContext loadAndValidate(BookAppointmentDto request, Instant now) {
-    DealershipEntity dealership = findDealership(request.dealershipId());
-    VehicleEntity vehicle = findVehicle(request.vehicleId());
-    ServiceTypeEntity serviceType = findServiceType(request.serviceTypeCode());
-    ZoneId zone = ZoneId.of(dealership.getTimezone());
-    Instant start = request.desiredStartTime().toInstant();
-    Instant end = start.plus(Duration.ofMinutes(serviceType.getDurationMinutes()));
-    requireBookableSlot(dealership, zone, start, serviceType.getDurationMinutes(), now);
-    if (appointmentRepository.countVehicleOverlaps(vehicle.getId(), start, end) > 0) {
-      throw vehicleAlreadyBooked();
-    }
-    return BookingContext.builder()
-        .dealershipId(request.dealershipId())
-        .serviceTypeCode(request.serviceTypeCode())
-        .customerId(vehicle.getCustomerId())
-        .start(start)
-        .end(end)
-        .day(TimeSlotUtils.localDay(start.atZone(zone).toLocalDate(), zone))
-        .build();
-  }
-
-  private CandidateDto pickCandidate(BookingContext context) {
-    List<UUID> freeBayIds =
-        appointmentRepository.findFreeBayIds(
-            context.dealershipId(), context.start(), context.end());
-    List<UUID> freeTechnicianIds =
-        appointmentRepository.findFreeTechnicianIds(
-            context.dealershipId(), context.serviceTypeCode(), context.start(), context.end());
-    if (freeBayIds.isEmpty() || freeTechnicianIds.isEmpty()) {
-      throw new SchedulerException(ErrorCode.KUSS_NO_CAPACITY, ErrorMessageConstants.NO_CAPACITY);
-    }
-    List<AppointmentEntity> dayAppointments =
-        appointmentRepository.findConfirmedOnDayForTechnicians(
-            freeTechnicianIds, context.day().start(), context.day().end());
-    List<TechnicianLoadDto> loads =
-        CandidateSelectionUtils.loads(freeTechnicianIds, dayAppointments);
-    return CandidateSelectionUtils.pick(freeBayIds, loads, ThreadLocalRandom.current());
-  }
-
-  private void handleConflict(
-      DataAccessException ex, BookingDeadline deadline, boolean hasNextAttempt) {
-    String constraint = SqlErrorUtils.constraintName(ex);
-    String state = SqlErrorUtils.sqlState(ex);
-    if (VEHICLE_OVERLAP_CONSTRAINT.equals(constraint)) {
-      throw vehicleAlreadyBooked();
-    }
-    if (ex instanceof QueryTimeoutException) {
-      log.warn("Booking aborted, database statement timed out: {}", ex.getMessage());
-      throw serviceBusy();
-    }
-    if (!RETRYABLE_STATES.contains(state)) {
-      throw ex;
-    }
-    retryCounters.get(conflictType(constraint, state)).increment();
-    if (DEADLOCK_STATE.equals(state) && hasNextAttempt) {
-      backOffAfterDeadlock(deadline);
-    }
-  }
-
-  /**
-   * Waits outside any transaction before a deadlock victim retries, for the randomized backoff that
-   * {@link BookingDeadline} paces. Gives up as service busy when that wait would pass the request
-   * deadline.
-   */
-  private static void backOffAfterDeadlock(BookingDeadline deadline) {
-    Duration wait =
-        deadline
-            .nextDeadlockBackoff(ThreadLocalRandom.current())
-            .orElseThrow(AppointmentServiceImpl::deadlineReached);
-    try {
-      Thread.sleep(wait);
-    } catch (InterruptedException ex) {
-      Thread.currentThread().interrupt();
-      throw bookingNotCompleted();
-    }
-  }
-
-  private static String conflictType(String constraint, String state) {
-    if (DEADLOCK_STATE.equals(state)) {
-      return CONFLICT_DEADLOCK;
-    }
-    return BAY_OVERLAP_CONSTRAINT.equals(constraint) ? CONFLICT_BAY : CONFLICT_TECHNICIAN;
-  }
-
-  private static AppointmentDto newAppointment(
-      BookAppointmentDto request, BookingContext context, CandidateDto candidate, Instant now) {
-    return AppointmentDto.builder()
-        .id(UUID.randomUUID())
-        .dealershipId(context.dealershipId())
-        .customerId(context.customerId())
-        .vehicleId(request.vehicleId())
-        .serviceBayId(candidate.serviceBayId())
-        .technicianId(candidate.technicianId())
-        .serviceTypeCode(context.serviceTypeCode())
-        .startTime(context.start())
-        .endTime(context.end())
-        .status(AppointmentStatus.CONFIRMED)
-        .createdAt(now)
-        .build();
-  }
-
-  private static void requireBookableSlot(
-      DealershipEntity dealership, ZoneId zone, Instant start, int durationMinutes, Instant now) {
-    LocalDate date = start.atZone(zone).toLocalDate();
-    if (!TimeSlotUtils.isWithinHorizon(date, zone, now)) {
-      throw new SchedulerException(
-          ErrorCode.KUSS_VALIDATION_FAILED, ErrorMessageConstants.DATE_OUT_OF_HORIZON);
-    }
-    List<Instant> starts =
-        TimeSlotUtils.candidateStarts(
-            date, zone, dealership.getOpenTime(), dealership.getCloseTime(), durationMinutes, now);
-    if (!starts.contains(start)) {
-      throw new SchedulerException(
-          ErrorCode.KUSS_VALIDATION_FAILED, ErrorMessageConstants.SLOT_NOT_BOOKABLE);
-    }
+    throw BookingErrorUtils.bookingNotCompleted();
   }
 
   /**
@@ -366,7 +146,9 @@ class AppointmentServiceImpl implements AppointmentService {
   private AppointmentDto cancelAtomically(UUID appointmentId, Instant now) {
     int cancelled = appointmentRepository.cancelIfConfirmedAndNotStarted(appointmentId, now);
     AppointmentEntity appointment =
-        appointmentRepository.findById(appointmentId).orElseThrow(() -> appointmentNotFound());
+        appointmentRepository
+            .findById(appointmentId)
+            .orElseThrow(BookingErrorUtils::appointmentNotFound);
     if (cancelled == 0 && appointment.getStatus() == AppointmentStatus.CONFIRMED) {
       throw new SchedulerException(
           ErrorCode.KUSS_APPOINTMENT_ALREADY_STARTED,
@@ -381,7 +163,7 @@ class AppointmentServiceImpl implements AppointmentService {
     return appointmentRepository
         .findById(appointmentId)
         .map(appointmentMapper::toDto)
-        .orElseThrow(() -> appointmentNotFound());
+        .orElseThrow(BookingErrorUtils::appointmentNotFound);
   }
 
   /**
@@ -391,7 +173,7 @@ class AppointmentServiceImpl implements AppointmentService {
   @Override
   @Transactional(readOnly = true, timeout = RequestConstants.TRANSACTION_TIMEOUT_SECONDS)
   public List<AppointmentDto> listForDay(UUID dealershipId, LocalDate date) {
-    DealershipEntity dealership = findDealership(dealershipId);
+    DealershipEntity dealership = catalogService.requireDealership(dealershipId);
     ZoneId zone = ZoneId.of(dealership.getTimezone());
     requireListableDate(date, zone, clock.instant());
     TimeSlotUtils.Window day = TimeSlotUtils.localDay(date, zone);
@@ -408,83 +190,15 @@ class AppointmentServiceImpl implements AppointmentService {
       throw new SchedulerException(
           ErrorCode.KUSS_VALIDATION_FAILED, ErrorMessageConstants.DATE_BEYOND_HISTORY);
     }
-    if (!TimeSlotUtils.isWithinHorizon(date, zone, now)) {
-      throw new SchedulerException(
-          ErrorCode.KUSS_VALIDATION_FAILED, ErrorMessageConstants.DATE_OUT_OF_HORIZON);
-    }
+    TimeSlotUtils.requireWithinHorizon(date, zone, now);
   }
 
   private static String cancelRequest(UUID appointmentId) {
-    return "POST " + ApiPathConstants.APPOINTMENTS + "/" + appointmentId + "/cancel";
-  }
-
-  private static SchedulerException appointmentNotFound() {
-    return new SchedulerException(
-        ErrorCode.KUSS_RESOURCE_NOT_FOUND, ErrorMessageConstants.APPOINTMENT_NOT_FOUND);
-  }
-
-  private static String canonicalRequest(BookAppointmentDto request) {
-    return "POST "
+    return HttpMethod.POST.name()
+        + " "
         + ApiPathConstants.APPOINTMENTS
-        + "|"
-        + request.dealershipId()
-        + "|"
-        + request.vehicleId()
-        + "|"
-        + request.serviceTypeCode()
-        + "|"
-        + request.desiredStartTime().toInstant();
+        + "/"
+        + appointmentId
+        + ApiPathConstants.CANCEL;
   }
-
-  private static SchedulerException bookingNotCompleted() {
-    return new SchedulerException(
-        ErrorCode.KUSS_INTERNAL_ERROR, ErrorMessageConstants.BOOKING_NOT_COMPLETED);
-  }
-
-  private static SchedulerException serviceBusy() {
-    return new SchedulerException(ErrorCode.KUSS_SERVICE_BUSY, ErrorMessageConstants.SERVICE_BUSY);
-  }
-
-  private static SchedulerException deadlineReached() {
-    log.warn("Booking deadline reached, giving up as service busy");
-    return serviceBusy();
-  }
-
-  private static SchedulerException vehicleAlreadyBooked() {
-    return new SchedulerException(
-        ErrorCode.KUSS_VEHICLE_ALREADY_BOOKED, ErrorMessageConstants.VEHICLE_ALREADY_BOOKED);
-  }
-
-  private DealershipEntity findDealership(UUID dealershipId) {
-    return dealershipRepository
-        .findById(dealershipId)
-        .orElseThrow(() ->
-            new SchedulerException(
-                ErrorCode.KUSS_RESOURCE_NOT_FOUND, ErrorMessageConstants.DEALERSHIP_NOT_FOUND));
-  }
-
-  private VehicleEntity findVehicle(UUID vehicleId) {
-    return vehicleRepository
-        .findById(vehicleId)
-        .orElseThrow(() ->
-            new SchedulerException(
-                ErrorCode.KUSS_RESOURCE_NOT_FOUND, ErrorMessageConstants.VEHICLE_NOT_FOUND));
-  }
-
-  private ServiceTypeEntity findServiceType(String serviceTypeCode) {
-    return serviceTypeRepository
-        .findByCodeAndActiveTrue(serviceTypeCode)
-        .orElseThrow(() ->
-            new SchedulerException(
-                ErrorCode.KUSS_RESOURCE_NOT_FOUND, ErrorMessageConstants.SERVICE_TYPE_NOT_FOUND));
-  }
-
-  @Builder
-  private record BookingContext(
-      UUID dealershipId,
-      String serviceTypeCode,
-      UUID customerId,
-      Instant start,
-      Instant end,
-      TimeSlotUtils.Window day) {}
 }

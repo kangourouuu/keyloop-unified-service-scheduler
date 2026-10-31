@@ -32,5 +32,5 @@ public class ServiceBayEntity {
   private String bayCode;
 
   @Column(name = "active")
-  private Boolean active;
+  private boolean isActive;
 }

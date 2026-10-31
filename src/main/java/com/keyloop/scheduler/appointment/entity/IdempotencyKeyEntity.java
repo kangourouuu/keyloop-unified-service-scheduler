@@ -44,7 +44,7 @@ public class IdempotencyKeyEntity implements Persistable<String> {
   @Column(name = "created_at")
   private Instant createdAt;
 
-  @Transient @Builder.Default private boolean newEntity = true;
+  @Transient @Builder.Default private boolean isNewEntity = true;
 
   @Override
   public String getId() {
@@ -53,12 +53,12 @@ public class IdempotencyKeyEntity implements Persistable<String> {
 
   @Override
   public boolean isNew() {
-    return newEntity;
+    return isNewEntity;
   }
 
   @PostLoad
   @PostPersist
   void markNotNew() {
-    this.newEntity = false;
+    this.isNewEntity = false;
   }
 }

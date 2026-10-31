@@ -50,7 +50,7 @@ public class RequestAuditEntity implements Persistable<RequestAuditKey> {
   @Column(name = "request_payload")
   private String payload;
 
-  @Transient @Builder.Default private boolean newEntity = true;
+  @Transient @Builder.Default private boolean isNewEntity = true;
 
   @Override
   public RequestAuditKey getId() {
@@ -59,12 +59,12 @@ public class RequestAuditEntity implements Persistable<RequestAuditKey> {
 
   @Override
   public boolean isNew() {
-    return newEntity;
+    return isNewEntity;
   }
 
   @PostLoad
   @PostPersist
   void markNotNew() {
-    this.newEntity = false;
+    this.isNewEntity = false;
   }
 }

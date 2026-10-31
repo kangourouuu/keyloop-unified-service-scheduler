@@ -10,7 +10,7 @@ import org.springframework.data.repository.query.Param;
 public interface ServiceBayRepository extends JpaRepository<ServiceBayEntity, UUID> {
 
   @Query(
-      "select b.id from ServiceBayEntity b where b.dealershipId = :dealershipId and b.active = true")
+      "select b.id from ServiceBayEntity b where b.dealershipId = :dealershipId and b.isActive = true")
   List<UUID> findActiveIds(@Param("dealershipId") UUID dealershipId);
 
   List<ServiceBayEntity> findByDealershipIdOrderByBayCode(UUID dealershipId);

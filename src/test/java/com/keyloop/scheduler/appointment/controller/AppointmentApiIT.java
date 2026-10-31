@@ -5,11 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.keyloop.scheduler.IntegrationTestSupport;
 import com.keyloop.scheduler.SeedIds;
 import com.keyloop.scheduler.appointment.dto.BookAppointmentDto;
-import java.time.Clock;
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
+import com.keyloop.scheduler.common.constants.HeaderConstants;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -27,11 +27,6 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 class AppointmentApiIT extends IntegrationTestSupport {
-
-  private static final ZoneId LONDON = ZoneId.of("Europe/London");
-  private static final String KEY_HEADER = "Idempotency-Key";
-
-  @Autowired private Clock clock;
 
   @Autowired private JsonMapper jsonMapper;
 
@@ -68,6 +63,28 @@ class AppointmentApiIT extends IntegrationTestSupport {
     assertValidationFailed(
         book(request(SeedIds.vehicle(1), "OIL_CHANGE", dayAt(10, 0)), "a".repeat(129)));
     assertValidationFailed(book(request(SeedIds.vehicle(1), "OIL_CHANGE", dayAt(10, 0)), "a b"));
+    assertValidationFailed(
+        book(
+            bookingBody(null, SeedIds.vehicle(1), "OIL_CHANGE", dayAt(10, 0).toString()),
+            "k-no-dealership"));
+    assertValidationFailed(
+        book(request(SeedIds.vehicle(1), " ", dayAt(10, 0)), "k-blank-service-type"));
+    assertValidationFailed(
+        book(request(SeedIds.vehicle(1), "S".repeat(41), dayAt(10, 0)), "k-long-service-type"));
+    assertValidationFailed(
+        book(
+            bookingBody(SeedIds.LONDON_DEALERSHIP_ID, SeedIds.vehicle(1), "OIL_CHANGE", null),
+            "k-no-start"));
+  }
+
+  private static String bookingBody(
+      UUID dealershipId, UUID vehicleId, String serviceTypeCode, String desiredStartTime) {
+    return "{\"dealershipId\":%s,\"vehicleId\":\"%s\",\"serviceTypeCode\":\"%s\",\"desiredStartTime\":%s}"
+        .formatted(
+            dealershipId == null ? "null" : "\"" + dealershipId + "\"",
+            vehicleId,
+            serviceTypeCode,
+            desiredStartTime == null ? "null" : "\"" + desiredStartTime + "\"");
   }
 
   @Test
@@ -90,14 +107,14 @@ class AppointmentApiIT extends IntegrationTestSupport {
   void should_return_400_idempotency_key_missing_on_book_and_cancel() {
     ResponseEntity<String> booking =
         http.post()
-            .uri("/api/v1/appointments")
+            .uri(ApiPathConstants.APPOINTMENTS)
             .contentType(MediaType.APPLICATION_JSON)
             .body(json(request(SeedIds.vehicle(1), "OIL_CHANGE", dayAt(10, 0))))
             .retrieve()
             .toEntity(String.class);
     ResponseEntity<String> cancel =
         http.post()
-            .uri("/api/v1/appointments/" + UUID.randomUUID() + "/cancel")
+            .uri(ApiPathConstants.APPOINTMENTS + "/" + UUID.randomUUID() + ApiPathConstants.CANCEL)
             .retrieve()
             .toEntity(String.class);
 
@@ -126,7 +143,7 @@ class AppointmentApiIT extends IntegrationTestSupport {
         .isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(book(request(SeedIds.vehicle(1), "NOPE", dayAt(10, 0)), "k-no-type").getStatusCode())
         .isEqualTo(HttpStatus.NOT_FOUND);
-    assertThat(get("/api/v1/appointments/" + UUID.randomUUID()).getStatusCode())
+    assertThat(get(ApiPathConstants.APPOINTMENTS + "/" + UUID.randomUUID()).getStatusCode())
         .isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(cancel(UUID.randomUUID(), "k-cancel-missing").getStatusCode())
         .isEqualTo(HttpStatus.NOT_FOUND);
@@ -323,7 +340,7 @@ class AppointmentApiIT extends IntegrationTestSupport {
     String early = id(book(request(SeedIds.vehicle(1), "OIL_CHANGE", dayAt(10, 0)), "k-early"));
     cancel(UUID.fromString(early), "k-early-cancel");
 
-    ResponseEntity<String> single = get("/api/v1/appointments/" + late);
+    ResponseEntity<String> single = get(ApiPathConstants.APPOINTMENTS + "/" + late);
     JsonNode day =
         jsonMapper.readTree(
             get("/api/v1/dealerships/"
@@ -356,7 +373,7 @@ class AppointmentApiIT extends IntegrationTestSupport {
     ResponseEntity<String> docs = get("/v3/api-docs");
 
     assertThat(docs.getStatusCode()).isEqualTo(HttpStatus.OK);
-    assertThat(docs.getBody()).contains("/api/v1/appointments");
+    assertThat(docs.getBody()).contains(ApiPathConstants.APPOINTMENTS);
   }
 
   private ResponseEntity<String> book(BookAppointmentDto request, String key) {
@@ -364,19 +381,13 @@ class AppointmentApiIT extends IntegrationTestSupport {
   }
 
   private ResponseEntity<String> book(String body, String key) {
-    return http.post()
-        .uri("/api/v1/appointments")
-        .header(KEY_HEADER, key)
-        .contentType(MediaType.APPLICATION_JSON)
-        .body(body)
-        .retrieve()
-        .toEntity(String.class);
+    return postBooking(body, key);
   }
 
   private ResponseEntity<String> cancel(UUID appointmentId, String key) {
     return http.post()
-        .uri("/api/v1/appointments/" + appointmentId + "/cancel")
-        .header(KEY_HEADER, key)
+        .uri(ApiPathConstants.APPOINTMENTS + "/" + appointmentId + ApiPathConstants.CANCEL)
+        .header(HeaderConstants.IDEMPOTENCY_KEY, key)
         .retrieve()
         .toEntity(String.class);
   }
@@ -435,9 +446,5 @@ class AppointmentApiIT extends IntegrationTestSupport {
 
   private LocalDate sevenDaysAhead() {
     return LocalDate.now(clock).plusDays(7);
-  }
-
-  private OffsetDateTime dayAt(int hour, int minute) {
-    return sevenDaysAhead().atTime(hour, minute).atZone(LONDON).toOffsetDateTime();
   }
 }

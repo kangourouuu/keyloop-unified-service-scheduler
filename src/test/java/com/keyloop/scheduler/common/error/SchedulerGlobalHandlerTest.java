@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
 import com.keyloop.scheduler.common.constants.HeaderConstants;
 import com.keyloop.scheduler.common.constants.RequestConstants;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -133,7 +134,7 @@ class SchedulerGlobalHandlerTest {
             post("/stub/validated").contentType(MediaType.APPLICATION_JSON).content("{bad json"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("KUSS_VALIDATION_FAILED"))
-        .andExpect(jsonPath("$.detail").value("Malformed request."));
+        .andExpect(jsonPath("$.detail").value(ErrorMessageConstants.MALFORMED_REQUEST));
   }
 
   @Test

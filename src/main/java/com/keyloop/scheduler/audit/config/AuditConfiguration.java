@@ -1,5 +1,6 @@
 package com.keyloop.scheduler.audit.config;
 
+import com.keyloop.scheduler.common.constants.BeanNameConstants;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -11,7 +12,7 @@ class AuditConfiguration {
   private static final int QUEUE_CAPACITY = 1000;
   private static final int SHUTDOWN_WAIT_SECONDS = 5;
 
-  @Bean
+  @Bean(BeanNameConstants.AUDIT_EXECUTOR)
   ThreadPoolTaskExecutor auditExecutor() {
     ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
     executor.setCorePoolSize(CORE_POOL_SIZE);

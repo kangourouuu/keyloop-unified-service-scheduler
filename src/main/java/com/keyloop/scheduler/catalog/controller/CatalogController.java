@@ -5,37 +5,36 @@ import com.keyloop.scheduler.catalog.dto.DealershipDetailDto;
 import com.keyloop.scheduler.catalog.dto.DealershipDto;
 import com.keyloop.scheduler.catalog.dto.ServiceTypeDto;
 import com.keyloop.scheduler.catalog.service.CatalogService;
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/v1")
 class CatalogController {
 
   private final CatalogService catalogService;
 
-  @GetMapping("/dealerships")
+  @GetMapping(ApiPathConstants.DEALERSHIPS)
   List<DealershipDto> findDealerships() {
     return catalogService.findDealerships();
   }
 
-  @GetMapping("/dealerships/{dealershipId}")
+  @GetMapping(ApiPathConstants.DEALERSHIPS + "/{dealershipId}")
   DealershipDetailDto findDealership(@PathVariable UUID dealershipId) {
     return catalogService.findDealership(dealershipId);
   }
 
-  @GetMapping("/service-types")
+  @GetMapping(ApiPathConstants.SERVICE_TYPES)
   List<ServiceTypeDto> findServiceTypes() {
     return catalogService.findServiceTypes();
   }
 
-  @GetMapping("/customers")
+  @GetMapping(ApiPathConstants.CUSTOMERS)
   List<CustomerDto> findCustomers() {
     return catalogService.findCustomers();
   }

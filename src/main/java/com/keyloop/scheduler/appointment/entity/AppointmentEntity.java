@@ -66,16 +66,16 @@ public class AppointmentEntity implements Persistable<UUID> {
   @Column(name = "cancelled_at")
   private Instant cancelledAt;
 
-  @Transient @Builder.Default private boolean newEntity = true;
+  @Transient @Builder.Default private boolean isNewEntity = true;
 
   @Override
   public boolean isNew() {
-    return newEntity;
+    return isNewEntity;
   }
 
   @PostLoad
   @PostPersist
   void markNotNew() {
-    this.newEntity = false;
+    this.isNewEntity = false;
   }
 }

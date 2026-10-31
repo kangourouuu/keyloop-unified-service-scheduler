@@ -1,8 +1,8 @@
 package com.keyloop.scheduler.appointment.service.impl;
 
-import com.keyloop.scheduler.appointment.dto.AppointmentDto;
 import com.keyloop.scheduler.appointment.dto.AppointmentResultDto;
 import com.keyloop.scheduler.appointment.entity.IdempotencyKeyEntity;
+import com.keyloop.scheduler.appointment.mapper.IdempotencyKeyMapper;
 import com.keyloop.scheduler.appointment.repository.IdempotencyKeyRepository;
 import com.keyloop.scheduler.appointment.service.IdempotencyService;
 import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
@@ -32,6 +32,7 @@ class IdempotencyServiceImpl implements IdempotencyService {
   private static final String DUPLICATE_KEY_STATE = "23505";
 
   private final IdempotencyKeyRepository repository;
+  private final IdempotencyKeyMapper mapper;
   private final JsonMapper jsonMapper;
   private final Clock clock;
 
@@ -54,13 +55,18 @@ class IdempotencyServiceImpl implements IdempotencyService {
     return Optional.of(replay(existing.get(), requestHash));
   }
 
+  /**
+   * Stores the response on the claimed key with one conditional update that only matches a claim
+   * that is still open, so a stored response is never overwritten. Matching no row means the claim
+   * is gone or already answered, which cannot happen inside the claiming transaction.
+   */
   @Override
   @Transactional(propagation = Propagation.MANDATORY)
   public void complete(String key, AppointmentResultDto result) {
-    IdempotencyKeyEntity entity = repository.findById(key).orElseThrow();
-    entity.setResponseStatus(result.httpStatus());
-    entity.setResponseBody(jsonMapper.writeValueAsString(result.appointment()));
-    repository.saveAndFlush(entity);
+    String body = mapper.toResponseBody(result.appointment(), jsonMapper);
+    if (repository.complete(key, result.httpStatus(), body) != 1) {
+      throw new IllegalStateException("Idempotency claim is not open for completion.");
+    }
   }
 
   private Optional<IdempotencyKeyEntity> findLive(String key) {
@@ -98,12 +104,7 @@ class IdempotencyServiceImpl implements IdempotencyService {
     if (stored.getResponseStatus() == null) {
       throw inFlight();
     }
-    AppointmentDto appointment =
-        jsonMapper.readValue(stored.getResponseBody(), AppointmentDto.class);
-    return AppointmentResultDto.builder()
-        .httpStatus(stored.getResponseStatus())
-        .appointment(appointment)
-        .build();
+    return mapper.toResult(stored, jsonMapper);
   }
 
   private static SchedulerException inFlight() {

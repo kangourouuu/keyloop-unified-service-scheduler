@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 
 import com.keyloop.scheduler.audit.dto.RequestAuditDto;
 import com.keyloop.scheduler.audit.service.RequestAuditService;
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
 import java.time.Clock;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
@@ -22,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 class RequestAuditFilterTest {
 
-  private static final String BOOKING_PATH = "/api/v1/appointments";
+  private static final String BOOKING_PATH = ApiPathConstants.APPOINTMENTS;
 
   @Test
   void should_hand_audit_to_reject_when_executor_refuses_the_task() throws Exception {

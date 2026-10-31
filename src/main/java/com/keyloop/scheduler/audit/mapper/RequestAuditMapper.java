@@ -13,6 +13,6 @@ public interface RequestAuditMapper {
       target = "key",
       expression =
           "java(RequestAuditKey.builder().id(audit.id()).occurredAt(audit.occurredAt()).build())")
-  @Mapping(target = "newEntity", ignore = true)
+  @Mapping(target = "isNewEntity", ignore = true)
   RequestAuditEntity toEntity(RequestAuditDto audit);
 }

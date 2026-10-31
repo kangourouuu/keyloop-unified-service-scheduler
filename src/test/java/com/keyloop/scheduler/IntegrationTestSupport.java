@@ -1,7 +1,13 @@
 package com.keyloop.scheduler;
 
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
+import com.keyloop.scheduler.common.constants.HeaderConstants;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,6 +15,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -29,9 +37,13 @@ public abstract class IntegrationTestSupport {
       WHERE v.id = :vehicleId
       """;
 
+  protected static final ZoneId LONDON = ZoneId.of("Europe/London");
+
   @LocalServerPort protected int port;
 
   @Autowired protected JdbcClient jdbcClient;
+
+  @Autowired protected Clock clock;
 
   @Autowired private TransactionTemplate transactionTemplate;
 
@@ -69,5 +81,25 @@ public abstract class IntegrationTestSupport {
         .param("status", status)
         .update();
     return id;
+  }
+
+  protected OffsetDateTime dayAt(int hour, int minute) {
+    return LocalDate.now(clock).plusDays(7).atTime(hour, minute).atZone(LONDON).toOffsetDateTime();
+  }
+
+  protected static String bookingBody(
+      UUID vehicleId, String serviceTypeCode, OffsetDateTime desiredStartTime) {
+    return "{\"dealershipId\":\"%s\",\"vehicleId\":\"%s\",\"serviceTypeCode\":\"%s\",\"desiredStartTime\":\"%s\"}"
+        .formatted(SeedIds.LONDON_DEALERSHIP_ID, vehicleId, serviceTypeCode, desiredStartTime);
+  }
+
+  protected ResponseEntity<String> postBooking(String body, String idempotencyKey) {
+    return http.post()
+        .uri(ApiPathConstants.APPOINTMENTS)
+        .header(HeaderConstants.IDEMPOTENCY_KEY, idempotencyKey)
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(body)
+        .retrieve()
+        .toEntity(String.class);
   }
 }

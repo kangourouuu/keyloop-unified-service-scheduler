@@ -16,11 +16,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.time.Clock;
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -34,11 +31,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 class IdempotencyIT extends IntegrationTestSupport {
 
-  private static final ZoneId LONDON = ZoneId.of("Europe/London");
-
   @Autowired private AppointmentService appointmentService;
-
-  @Autowired private Clock clock;
 
   @Autowired private DataSource dataSource;
 
@@ -203,9 +196,5 @@ class IdempotencyIT extends IntegrationTestSupport {
 
   private int countAppointments() {
     return jdbcClient.sql("SELECT count(*) FROM appointment").query(Integer.class).single();
-  }
-
-  private OffsetDateTime dayAt(int hour, int minute) {
-    return LocalDate.now(clock).plusDays(7).atTime(hour, minute).atZone(LONDON).toOffsetDateTime();
   }
 }

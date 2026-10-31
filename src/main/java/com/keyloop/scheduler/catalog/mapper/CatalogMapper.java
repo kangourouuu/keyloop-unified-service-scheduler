@@ -15,6 +15,7 @@ import com.keyloop.scheduler.catalog.entity.TechnicianEntity;
 import com.keyloop.scheduler.catalog.entity.VehicleEntity;
 import java.util.List;
 import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 
 @Mapper(componentModel = "spring")
 public interface CatalogMapper {
@@ -24,8 +25,10 @@ public interface CatalogMapper {
   DealershipDetailDto toDealershipDetail(
       DealershipEntity dealership, List<ServiceBayDto> bays, List<TechnicianDto> technicians);
 
+  @Mapping(target = "isActive", source = "active")
   ServiceBayDto toBay(ServiceBayEntity bay);
 
+  @Mapping(target = "isActive", source = "active")
   TechnicianDto toTechnician(TechnicianEntity technician);
 
   ServiceTypeDto toServiceType(ServiceTypeEntity serviceType);

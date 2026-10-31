@@ -29,7 +29,7 @@ public interface AppointmentRepository extends JpaRepository<AppointmentEntity, 
       """
       select b.id from ServiceBayEntity b
       where b.dealershipId = :dealershipId
-        and b.active = true
+        and b.isActive = true
         and not exists (
           select a.id from AppointmentEntity a
           where a.serviceBayId = b.id
@@ -46,7 +46,7 @@ public interface AppointmentRepository extends JpaRepository<AppointmentEntity, 
       """
       select t.id from TechnicianEntity t join t.skillCodes s
       where t.dealershipId = :dealershipId
-        and t.active = true
+        and t.isActive = true
         and s = :serviceTypeCode
         and not exists (
           select a.id from AppointmentEntity a

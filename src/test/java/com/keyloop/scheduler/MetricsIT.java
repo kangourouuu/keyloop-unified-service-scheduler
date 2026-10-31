@@ -6,14 +6,13 @@ import static com.keyloop.scheduler.common.constants.MetricConstants.TAG_RESULT;
 import static com.keyloop.scheduler.common.constants.MetricConstants.TAG_SERVICE_TYPE;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.keyloop.scheduler.common.constants.HeaderConstants;
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
+import com.keyloop.scheduler.common.constants.MetricConstants;
 import io.micrometer.core.instrument.MeterRegistry;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,22 +21,18 @@ import org.springframework.http.ResponseEntity;
 
 class MetricsIT extends IntegrationTestSupport {
 
-  private static final ZoneId LONDON = ZoneId.of("Europe/London");
   private static final String OIL_CHANGE = "OIL_CHANGE";
-  private static final String CONFIRMED = "confirmed";
 
   @Autowired private MeterRegistry meterRegistry;
 
-  @Autowired private Clock clock;
-
   @Test
   void should_count_confirmed_booking_by_service_type() {
-    double before = bookingCount(OIL_CHANGE, CONFIRMED);
+    double before = bookingCount(OIL_CHANGE, MetricConstants.RESULT_CONFIRMED);
 
     ResponseEntity<String> response = book(SeedIds.vehicle(1), OIL_CHANGE, dayAt(10, 0));
 
     assertThat(response.getStatusCode().value()).isEqualTo(201);
-    assertThat(bookingCount(OIL_CHANGE, CONFIRMED)).isEqualTo(before + 1);
+    assertThat(bookingCount(OIL_CHANGE, MetricConstants.RESULT_CONFIRMED)).isEqualTo(before + 1);
   }
 
   @Test
@@ -75,67 +70,75 @@ class MetricsIT extends IntegrationTestSupport {
 
   @Test
   void should_tag_unknown_service_type_when_code_is_not_in_the_catalog() {
-    double before = bookingCount("unknown", "KUSS_RESOURCE_NOT_FOUND");
+    double before = bookingCount(MetricConstants.UNKNOWN_SERVICE_TYPE, "KUSS_RESOURCE_NOT_FOUND");
 
     book(SeedIds.vehicle(1), "ZZZ", dayAt(10, 0));
 
-    assertThat(bookingCount("unknown", "KUSS_RESOURCE_NOT_FOUND")).isEqualTo(before + 1);
+    assertThat(bookingCount(MetricConstants.UNKNOWN_SERVICE_TYPE, "KUSS_RESOURCE_NOT_FOUND"))
+        .isEqualTo(before + 1);
   }
 
   @Test
   void should_tag_unknown_service_type_on_idempotency_mismatch_with_unvalidated_code() {
     String key = UUID.randomUUID().toString();
     book(SeedIds.vehicle(1), OIL_CHANGE, dayAt(10, 0), key);
-    double before = bookingCount("unknown", "KUSS_IDEMPOTENCY_KEY_MISMATCH");
+    double before =
+        bookingCount(MetricConstants.UNKNOWN_SERVICE_TYPE, "KUSS_IDEMPOTENCY_KEY_MISMATCH");
 
     ResponseEntity<String> response = book(SeedIds.vehicle(1), "ZZZ", dayAt(10, 0), key);
 
     assertThat(response.getStatusCode().value()).isEqualTo(422);
-    assertThat(bookingCount("unknown", "KUSS_IDEMPOTENCY_KEY_MISMATCH")).isEqualTo(before + 1);
+    assertThat(bookingCount(MetricConstants.UNKNOWN_SERVICE_TYPE, "KUSS_IDEMPOTENCY_KEY_MISMATCH"))
+        .isEqualTo(before + 1);
     assertThat(meterRegistry.find(BOOKING_REQUESTS).tag(TAG_SERVICE_TYPE, "ZZZ").counters())
         .isEmpty();
   }
 
   @Test
   void should_count_missing_idempotency_key_as_unknown_service_type() {
-    double before = bookingCount("unknown", "KUSS_IDEMPOTENCY_KEY_MISSING");
+    double before =
+        bookingCount(MetricConstants.UNKNOWN_SERVICE_TYPE, "KUSS_IDEMPOTENCY_KEY_MISSING");
 
     ResponseEntity<String> response =
         http.post()
-            .uri("/api/v1/appointments")
+            .uri(ApiPathConstants.APPOINTMENTS)
             .contentType(MediaType.APPLICATION_JSON)
             .body("{}")
             .retrieve()
             .toEntity(String.class);
 
     assertThat(response.getStatusCode().value()).isEqualTo(400);
-    assertThat(bookingCount("unknown", "KUSS_IDEMPOTENCY_KEY_MISSING")).isEqualTo(before + 1);
+    assertThat(bookingCount(MetricConstants.UNKNOWN_SERVICE_TYPE, "KUSS_IDEMPOTENCY_KEY_MISSING"))
+        .isEqualTo(before + 1);
   }
 
   @Test
   void should_count_boundary_validation_failures_as_unknown_service_type() {
-    double before = bookingCount("unknown", "KUSS_VALIDATION_FAILED");
+    double before = bookingCount(MetricConstants.UNKNOWN_SERVICE_TYPE, "KUSS_VALIDATION_FAILED");
 
-    ResponseEntity<String> emptyBody = bookRaw("{}", "k-" + UUID.randomUUID());
-    ResponseEntity<String> malformed = bookRaw("{bad", "k-" + UUID.randomUUID());
-    ResponseEntity<String> badKey = bookRaw("{}", "a b");
+    ResponseEntity<String> emptyBody = postBooking("{}", "k-" + UUID.randomUUID());
+    ResponseEntity<String> malformed = postBooking("{bad", "k-" + UUID.randomUUID());
+    ResponseEntity<String> badKey = postBooking("{}", "a b");
 
     assertThat(emptyBody.getStatusCode().value()).isEqualTo(400);
     assertThat(malformed.getStatusCode().value()).isEqualTo(400);
     assertThat(badKey.getStatusCode().value()).isEqualTo(400);
-    assertThat(bookingCount("unknown", "KUSS_VALIDATION_FAILED")).isEqualTo(before + 3);
+    assertThat(bookingCount(MetricConstants.UNKNOWN_SERVICE_TYPE, "KUSS_VALIDATION_FAILED"))
+        .isEqualTo(before + 3);
   }
 
   @Test
   void should_not_count_other_endpoints_as_booking_requests() {
-    double before = bookingCount("unknown", "KUSS_IDEMPOTENCY_KEY_MISSING");
+    double before =
+        bookingCount(MetricConstants.UNKNOWN_SERVICE_TYPE, "KUSS_IDEMPOTENCY_KEY_MISSING");
 
     http.post()
-        .uri("/api/v1/appointments/" + UUID.randomUUID() + "/cancel")
+        .uri(ApiPathConstants.APPOINTMENTS + "/" + UUID.randomUUID() + ApiPathConstants.CANCEL)
         .retrieve()
         .toBodilessEntity();
 
-    assertThat(bookingCount("unknown", "KUSS_IDEMPOTENCY_KEY_MISSING")).isEqualTo(before);
+    assertThat(bookingCount(MetricConstants.UNKNOWN_SERVICE_TYPE, "KUSS_IDEMPOTENCY_KEY_MISSING"))
+        .isEqualTo(before);
   }
 
   @Test
@@ -176,16 +179,6 @@ class MetricsIT extends IntegrationTestSupport {
     return meterRegistry.get(AVAILABILITY_QUERY_DURATION).timer().count();
   }
 
-  private ResponseEntity<String> bookRaw(String body, String idempotencyKey) {
-    return http.post()
-        .uri("/api/v1/appointments")
-        .header(HeaderConstants.IDEMPOTENCY_KEY, idempotencyKey)
-        .contentType(MediaType.APPLICATION_JSON)
-        .body(body)
-        .retrieve()
-        .toEntity(String.class);
-  }
-
   private ResponseEntity<String> book(
       UUID vehicleId, String serviceTypeCode, OffsetDateTime start) {
     return book(vehicleId, serviceTypeCode, start, UUID.randomUUID().toString());
@@ -193,26 +186,6 @@ class MetricsIT extends IntegrationTestSupport {
 
   private ResponseEntity<String> book(
       UUID vehicleId, String serviceTypeCode, OffsetDateTime start, String idempotencyKey) {
-    String body =
-        "{\"dealershipId\":\""
-            + SeedIds.LONDON_DEALERSHIP_ID
-            + "\",\"vehicleId\":\""
-            + vehicleId
-            + "\",\"serviceTypeCode\":\""
-            + serviceTypeCode
-            + "\",\"desiredStartTime\":\""
-            + start
-            + "\"}";
-    return http.post()
-        .uri("/api/v1/appointments")
-        .header(HeaderConstants.IDEMPOTENCY_KEY, idempotencyKey)
-        .contentType(MediaType.APPLICATION_JSON)
-        .body(body)
-        .retrieve()
-        .toEntity(String.class);
-  }
-
-  private OffsetDateTime dayAt(int hour, int minute) {
-    return LocalDate.now(clock).plusDays(7).atTime(hour, minute).atZone(LONDON).toOffsetDateTime();
+    return postBooking(bookingBody(vehicleId, serviceTypeCode, start), idempotencyKey);
   }
 }

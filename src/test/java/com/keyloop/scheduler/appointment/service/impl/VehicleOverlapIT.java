@@ -13,8 +13,6 @@ import com.keyloop.scheduler.common.error.ErrorCode;
 import com.keyloop.scheduler.common.error.SchedulerException;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import java.time.Clock;
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -29,12 +27,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 class VehicleOverlapIT extends IntegrationTestSupport {
 
-  private static final ZoneId LONDON = ZoneId.of("Europe/London");
+  private static final UUID LONDON_DEALERSHIP = SeedIds.LONDON_DEALERSHIP_ID;
   private static final ZoneId NEW_YORK = ZoneId.of("America/New_York");
 
   @Autowired private AppointmentService appointmentService;
-
-  @Autowired private Clock clock;
 
   @Autowired private MeterRegistry meterRegistry;
 
@@ -93,8 +89,6 @@ class VehicleOverlapIT extends IntegrationTestSupport {
     assertRejected(LONDON_DEALERSHIP, SeedIds.vehicle(2), "BRAKE_REPAIR", dayAt(10, 0), "k-full");
   }
 
-  private static final UUID LONDON_DEALERSHIP = SeedIds.LONDON_DEALERSHIP_ID;
-
   private String attempt(CountDownLatch startGate, UUID vehicleId, OffsetDateTime start, String key)
       throws InterruptedException {
     startGate.await();
@@ -130,9 +124,5 @@ class VehicleOverlapIT extends IntegrationTestSupport {
     return meterRegistry.find(MetricConstants.BOOKING_GIST_RETRIES).counters().stream()
         .mapToDouble(Counter::count)
         .sum();
-  }
-
-  private OffsetDateTime dayAt(int hour, int minute) {
-    return LocalDate.now(clock).plusDays(7).atTime(hour, minute).atZone(LONDON).toOffsetDateTime();
   }
 }

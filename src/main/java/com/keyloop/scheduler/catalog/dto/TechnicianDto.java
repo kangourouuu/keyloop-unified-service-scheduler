@@ -5,4 +5,4 @@ import java.util.UUID;
 import lombok.Builder;
 
 @Builder
-public record TechnicianDto(UUID id, String fullName, Boolean active, Set<String> skillCodes) {}
+public record TechnicianDto(UUID id, String fullName, boolean isActive, Set<String> skillCodes) {}

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.keyloop.scheduler.IntegrationTestSupport;
 import com.keyloop.scheduler.SeedIds;
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
 import com.keyloop.scheduler.common.constants.HeaderConstants;
 import com.zaxxer.hikari.HikariDataSource;
 import java.sql.Connection;
@@ -35,7 +36,11 @@ class PoolExhaustionIT extends IntegrationTestSupport {
     ResponseEntity<String> response =
         whilePoolIsExhausted(() ->
             http.post()
-                .uri("/api/v1/appointments/" + UUID.randomUUID() + "/cancel")
+                .uri(
+                    ApiPathConstants.APPOINTMENTS
+                        + "/"
+                        + UUID.randomUUID()
+                        + ApiPathConstants.CANCEL)
                 .header(HeaderConstants.IDEMPOTENCY_KEY, UUID.randomUUID().toString())
                 .retrieve()
                 .toEntity(String.class));

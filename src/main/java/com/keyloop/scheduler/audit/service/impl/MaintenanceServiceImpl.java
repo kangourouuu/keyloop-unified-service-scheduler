@@ -39,7 +39,7 @@ class MaintenanceServiceImpl implements MaintenanceService, SmartLifecycle {
   private final IdempotencyKeyRepository idempotencyKeyRepository;
   private final Clock clock;
   private final TransactionTemplate transactionTemplate;
-  private volatile boolean running;
+  private volatile boolean isRunning;
 
   MaintenanceServiceImpl(
       RequestAuditRepository requestAuditRepository,
@@ -76,17 +76,17 @@ class MaintenanceServiceImpl implements MaintenanceService, SmartLifecycle {
   @Override
   public void start() {
     runDaily();
-    running = true;
+    isRunning = true;
   }
 
   @Override
   public void stop() {
-    running = false;
+    isRunning = false;
   }
 
   @Override
   public boolean isRunning() {
-    return running;
+    return isRunning;
   }
 
   @Override

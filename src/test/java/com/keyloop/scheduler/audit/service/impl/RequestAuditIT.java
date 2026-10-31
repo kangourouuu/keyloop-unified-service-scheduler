@@ -10,15 +10,14 @@ import com.keyloop.scheduler.IntegrationTestSupport;
 import com.keyloop.scheduler.SeedIds;
 import com.keyloop.scheduler.audit.dto.RequestAuditDto;
 import com.keyloop.scheduler.audit.service.RequestAuditService;
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
 import com.keyloop.scheduler.common.constants.HeaderConstants;
 import io.micrometer.core.instrument.MeterRegistry;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.UUID;
+import lombok.Builder;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -27,7 +26,6 @@ import tools.jackson.databind.json.JsonMapper;
 
 class RequestAuditIT extends IntegrationTestSupport {
 
-  private static final ZoneId LONDON = ZoneId.of("Europe/London");
   private static final int PATH_MAX_LENGTH = 255;
   private static final String AUDIT_BY_REQUEST_ID_SQL =
       """
@@ -41,8 +39,6 @@ class RequestAuditIT extends IntegrationTestSupport {
   @Autowired private RequestAuditService requestAuditService;
 
   @Autowired private MeterRegistry meterRegistry;
-
-  @Autowired private Clock clock;
 
   @Autowired private JsonMapper jsonMapper;
 
@@ -91,7 +87,7 @@ class RequestAuditIT extends IntegrationTestSupport {
             .occurredAt(Instant.now())
             .requestId(UUID.randomUUID().toString())
             .httpMethod("POST")
-            .path("/api/v1/appointments")
+            .path(ApiPathConstants.APPOINTMENTS)
             .httpStatus(400)
             .durationMs(1)
             .payload("{not json")
@@ -176,7 +172,7 @@ class RequestAuditIT extends IntegrationTestSupport {
 
   private String bookingRequestId(String body) {
     return http.post()
-        .uri("/api/v1/appointments")
+        .uri(ApiPathConstants.APPOINTMENTS)
         .header(HeaderConstants.IDEMPOTENCY_KEY, UUID.randomUUID().toString())
         .contentType(MediaType.APPLICATION_JSON)
         .body(body)
@@ -184,22 +180,6 @@ class RequestAuditIT extends IntegrationTestSupport {
         .toEntity(String.class)
         .getHeaders()
         .getFirst(HeaderConstants.REQUEST_ID);
-  }
-
-  private String bookingBody(UUID vehicleId, String serviceTypeCode, OffsetDateTime start) {
-    return "{\"dealershipId\":\""
-        + SeedIds.LONDON_DEALERSHIP_ID
-        + "\",\"vehicleId\":\""
-        + vehicleId
-        + "\",\"serviceTypeCode\":\""
-        + serviceTypeCode
-        + "\",\"desiredStartTime\":\""
-        + start
-        + "\"}";
-  }
-
-  private OffsetDateTime dayAt(int hour, int minute) {
-    return LocalDate.now(clock).plusDays(7).atTime(hour, minute).atZone(LONDON).toOffsetDateTime();
   }
 
   private String requestIdOf(String uri) {
@@ -225,11 +205,12 @@ class RequestAuditIT extends IntegrationTestSupport {
         .sql(AUDIT_BY_REQUEST_ID_SQL)
         .param("requestId", requestId)
         .query((rs, rowNum) ->
-            new AuditRow(
-                rs.getInt("http_status"),
-                rs.getString("error_code"),
-                rs.getString("path"),
-                rs.getString("payload")))
+            AuditRow.builder()
+                .httpStatus(rs.getInt("http_status"))
+                .errorCode(rs.getString("error_code"))
+                .path(rs.getString("path"))
+                .payload(rs.getString("payload"))
+                .build())
         .single();
   }
 
@@ -241,5 +222,6 @@ class RequestAuditIT extends IntegrationTestSupport {
     return meterRegistry.get(AUDIT_WRITES).tag(TAG_STATUS, STATUS_FAILURE).counter().count();
   }
 
+  @Builder
   private record AuditRow(int httpStatus, String errorCode, String path, String payload) {}
 }

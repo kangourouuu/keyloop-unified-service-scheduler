@@ -185,8 +185,10 @@ class SchedulerGlobalHandler {
       HttpHeaders headers) {
     ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
     problem.setInstance(URI.create(request.getRequestURI()));
-    problem.setProperty("code", code.name());
-    problem.setProperty("requestId", request.getAttribute(RequestConstants.REQUEST_ID_ATTRIBUTE));
+    problem.setProperty(RequestConstants.PROBLEM_CODE, code.name());
+    problem.setProperty(
+        RequestConstants.PROBLEM_REQUEST_ID,
+        request.getAttribute(RequestConstants.REQUEST_ID_ATTRIBUTE));
     request.setAttribute(RequestConstants.ERROR_CODE_ATTRIBUTE, code.name());
     return ResponseEntity.status(status).headers(headers).body(problem);
   }

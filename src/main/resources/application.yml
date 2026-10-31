@@ -8,7 +8,7 @@ spring:
   datasource:
     url: "jdbc:postgresql://localhost:5432/kuss"
     username: "kuss"
-    password: "kuss"
+    password: "${SPRING_DATASOURCE_PASSWORD:kuss}"
   jpa:
     open-in-view: false
     generate-ddl: false

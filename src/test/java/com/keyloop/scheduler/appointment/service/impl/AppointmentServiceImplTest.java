@@ -12,9 +12,7 @@ import com.keyloop.scheduler.appointment.dto.BookAppointmentDto;
 import com.keyloop.scheduler.appointment.mapper.AppointmentMapper;
 import com.keyloop.scheduler.appointment.repository.AppointmentRepository;
 import com.keyloop.scheduler.appointment.service.IdempotencyService;
-import com.keyloop.scheduler.catalog.repository.DealershipRepository;
-import com.keyloop.scheduler.catalog.repository.ServiceTypeRepository;
-import com.keyloop.scheduler.catalog.repository.VehicleRepository;
+import com.keyloop.scheduler.catalog.service.CatalogService;
 import com.keyloop.scheduler.common.error.ErrorCode;
 import com.keyloop.scheduler.common.error.SchedulerException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -60,16 +58,18 @@ class AppointmentServiceImplTest {
   }
 
   private AppointmentServiceImpl service(Clock clock) {
+    CatalogService catalogService = mock(CatalogService.class);
+    BookingMetrics bookingMetrics = new BookingMetrics(catalogService, new SimpleMeterRegistry());
     return new AppointmentServiceImpl(
         clock,
-        mock(DealershipRepository.class),
-        mock(VehicleRepository.class),
-        mock(ServiceTypeRepository.class),
+        catalogService,
         mock(AppointmentRepository.class),
         mock(AppointmentMapper.class),
         mock(IdempotencyService.class),
         transactionManager,
-        new SimpleMeterRegistry());
+        mock(BookingAttempt.class),
+        new BookingConflictHandler(bookingMetrics),
+        bookingMetrics);
   }
 
   private static BookAppointmentDto request() {

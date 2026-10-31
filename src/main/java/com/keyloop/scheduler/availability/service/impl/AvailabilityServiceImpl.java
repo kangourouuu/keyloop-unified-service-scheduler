@@ -9,10 +9,9 @@ import com.keyloop.scheduler.availability.service.AvailabilityService;
 import com.keyloop.scheduler.availability.util.AvailabilitySweepUtils;
 import com.keyloop.scheduler.catalog.entity.DealershipEntity;
 import com.keyloop.scheduler.catalog.entity.ServiceTypeEntity;
-import com.keyloop.scheduler.catalog.repository.DealershipRepository;
 import com.keyloop.scheduler.catalog.repository.ServiceBayRepository;
-import com.keyloop.scheduler.catalog.repository.ServiceTypeRepository;
 import com.keyloop.scheduler.catalog.repository.TechnicianRepository;
+import com.keyloop.scheduler.catalog.service.CatalogService;
 import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
 import com.keyloop.scheduler.common.constants.MetricConstants;
 import com.keyloop.scheduler.common.constants.RequestConstants;
@@ -37,8 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 class AvailabilityServiceImpl implements AvailabilityService {
 
   private final Clock clock;
-  private final DealershipRepository dealershipRepository;
-  private final ServiceTypeRepository serviceTypeRepository;
+  private final CatalogService catalogService;
   private final ServiceBayRepository serviceBayRepository;
   private final TechnicianRepository technicianRepository;
   private final AppointmentRepository appointmentRepository;
@@ -68,8 +66,8 @@ class AvailabilityServiceImpl implements AvailabilityService {
   private AvailabilityDto queryAvailability(
       UUID dealershipId, LocalDate date, String serviceTypeCode) {
     Instant now = clock.instant();
-    DealershipEntity dealership = findDealership(dealershipId);
-    ServiceTypeEntity serviceType = findServiceType(serviceTypeCode);
+    DealershipEntity dealership = catalogService.requireDealership(dealershipId);
+    ServiceTypeEntity serviceType = catalogService.requireServiceType(serviceTypeCode);
     ZoneId zone = ZoneId.of(dealership.getTimezone());
     requireBookableDate(date, zone, now);
     int durationMinutes = serviceType.getDurationMinutes();
@@ -90,10 +88,7 @@ class AvailabilityServiceImpl implements AvailabilityService {
       throw new SchedulerException(
           ErrorCode.KUSS_VALIDATION_FAILED, ErrorMessageConstants.DATE_IN_PAST);
     }
-    if (!TimeSlotUtils.isWithinHorizon(date, zone, now)) {
-      throw new SchedulerException(
-          ErrorCode.KUSS_VALIDATION_FAILED, ErrorMessageConstants.DATE_OUT_OF_HORIZON);
-    }
+    TimeSlotUtils.requireWithinHorizon(date, zone, now);
   }
 
   private List<SlotDto> sweep(
@@ -116,21 +111,5 @@ class AvailabilityServiceImpl implements AvailabilityService {
             .map(availabilityMapper::toBusyInterval)
             .toList();
     return AvailabilitySweepUtils.sweep(starts, durationMinutes, zone, bayIds, technicianIds, busy);
-  }
-
-  private DealershipEntity findDealership(UUID dealershipId) {
-    return dealershipRepository
-        .findById(dealershipId)
-        .orElseThrow(() ->
-            new SchedulerException(
-                ErrorCode.KUSS_RESOURCE_NOT_FOUND, ErrorMessageConstants.DEALERSHIP_NOT_FOUND));
-  }
-
-  private ServiceTypeEntity findServiceType(String serviceTypeCode) {
-    return serviceTypeRepository
-        .findByCodeAndActiveTrue(serviceTypeCode)
-        .orElseThrow(() ->
-            new SchedulerException(
-                ErrorCode.KUSS_RESOURCE_NOT_FOUND, ErrorMessageConstants.SERVICE_TYPE_NOT_FOUND));
   }
 }

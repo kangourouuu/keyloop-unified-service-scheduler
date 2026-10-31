@@ -44,7 +44,7 @@ class AppointmentController {
     return appointmentService.getAppointment(appointmentId);
   }
 
-  @PostMapping(ApiPathConstants.APPOINTMENTS + "/{appointmentId}/cancel")
+  @PostMapping(ApiPathConstants.APPOINTMENTS + "/{appointmentId}" + ApiPathConstants.CANCEL)
   ResponseEntity<AppointmentDto> cancel(
       @PathVariable UUID appointmentId,
       @RequestHeader(HeaderConstants.IDEMPOTENCY_KEY) @Pattern(regexp = IDEMPOTENCY_KEY_PATTERN)
@@ -53,7 +53,7 @@ class AppointmentController {
     return ResponseEntity.status(result.httpStatus()).body(result.appointment());
   }
 
-  @GetMapping("/api/v1/dealerships/{dealershipId}/appointments")
+  @GetMapping(ApiPathConstants.DEALERSHIPS + "/{dealershipId}/appointments")
   List<AppointmentDto> listForDay(
       @PathVariable UUID dealershipId,
       @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {

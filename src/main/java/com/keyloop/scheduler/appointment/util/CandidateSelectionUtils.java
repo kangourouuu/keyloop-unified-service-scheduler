@@ -14,6 +14,10 @@ public final class CandidateSelectionUtils {
 
   private CandidateSelectionUtils() {}
 
+  /**
+   * Returns the confirmed minutes each free technician already has on the day, zero when none, as
+   * the load that decides who takes the next booking.
+   */
   public static List<TechnicianLoadDto> loads(
       List<UUID> technicianIds, List<AppointmentEntity> dayAppointments) {
     Map<UUID, Long> minutesByTechnician =
@@ -33,6 +37,10 @@ public final class CandidateSelectionUtils {
         .toList();
   }
 
+  /**
+   * Picks the technician with the fewest confirmed minutes that day, at random among ties, and a
+   * random free bay.
+   */
   public static CandidateDto pick(
       List<UUID> freeBayIds, List<TechnicianLoadDto> freeTechnicians, RandomGenerator random) {
     long fewestMinutes =

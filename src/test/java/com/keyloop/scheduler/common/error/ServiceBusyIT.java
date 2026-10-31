@@ -4,31 +4,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.keyloop.scheduler.IntegrationTestSupport;
 import com.keyloop.scheduler.SeedIds;
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
 import com.keyloop.scheduler.common.constants.HeaderConstants;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.UUID;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import tools.jackson.databind.json.JsonMapper;
 
 class ServiceBusyIT extends IntegrationTestSupport {
 
-  private static final ZoneId LONDON = ZoneId.of("Europe/London");
-
   @Autowired private DataSource dataSource;
-
-  @Autowired private Clock clock;
 
   @Autowired private JsonMapper jsonMapper;
 
@@ -110,22 +103,12 @@ class ServiceBusyIT extends IntegrationTestSupport {
   }
 
   private ResponseEntity<String> book(String key) {
-    OffsetDateTime start = day().atTime(10, 0).atZone(LONDON).toOffsetDateTime();
-    String body =
-        "{\"dealershipId\":\"%s\",\"vehicleId\":\"%s\",\"serviceTypeCode\":\"OIL_CHANGE\",\"desiredStartTime\":\"%s\"}"
-            .formatted(SeedIds.LONDON_DEALERSHIP_ID, SeedIds.vehicle(1), start);
-    return http.post()
-        .uri("/api/v1/appointments")
-        .header(HeaderConstants.IDEMPOTENCY_KEY, key)
-        .contentType(MediaType.APPLICATION_JSON)
-        .body(body)
-        .retrieve()
-        .toEntity(String.class);
+    return postBooking(bookingBody(SeedIds.vehicle(1), "OIL_CHANGE", dayAt(10, 0)), key);
   }
 
   private ResponseEntity<String> cancel(UUID appointmentId) {
     return http.post()
-        .uri("/api/v1/appointments/" + appointmentId + "/cancel")
+        .uri(ApiPathConstants.APPOINTMENTS + "/" + appointmentId + ApiPathConstants.CANCEL)
         .header(HeaderConstants.IDEMPOTENCY_KEY, UUID.randomUUID().toString())
         .retrieve()
         .toEntity(String.class);

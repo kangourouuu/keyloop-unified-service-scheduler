@@ -8,6 +8,7 @@ import com.keyloop.scheduler.catalog.dto.ServiceTypeDto;
 import com.keyloop.scheduler.catalog.dto.TechnicianDto;
 import com.keyloop.scheduler.catalog.dto.VehicleDto;
 import com.keyloop.scheduler.catalog.entity.DealershipEntity;
+import com.keyloop.scheduler.catalog.entity.ServiceTypeEntity;
 import com.keyloop.scheduler.catalog.entity.VehicleEntity;
 import com.keyloop.scheduler.catalog.mapper.CatalogMapper;
 import com.keyloop.scheduler.catalog.repository.CustomerRepository;
@@ -50,12 +51,7 @@ class CatalogServiceImpl implements CatalogService {
   @Override
   @Transactional(readOnly = true, timeout = RequestConstants.TRANSACTION_TIMEOUT_SECONDS)
   public DealershipDetailDto findDealership(UUID dealershipId) {
-    DealershipEntity dealership =
-        dealershipRepository
-            .findById(dealershipId)
-            .orElseThrow(() ->
-                new SchedulerException(
-                    ErrorCode.KUSS_RESOURCE_NOT_FOUND, ErrorMessageConstants.DEALERSHIP_NOT_FOUND));
+    DealershipEntity dealership = requireDealership(dealershipId);
     List<ServiceBayDto> bays =
         serviceBayRepository.findByDealershipIdOrderByBayCode(dealershipId).stream()
             .map(catalogMapper::toBay)
@@ -70,7 +66,7 @@ class CatalogServiceImpl implements CatalogService {
   @Override
   @Transactional(readOnly = true, timeout = RequestConstants.TRANSACTION_TIMEOUT_SECONDS)
   public List<ServiceTypeDto> findServiceTypes() {
-    return serviceTypeRepository.findByActiveTrueOrderByCode().stream()
+    return serviceTypeRepository.findByIsActiveTrueOrderByCode().stream()
         .map(catalogMapper::toServiceType)
         .toList();
   }
@@ -89,5 +85,32 @@ class CatalogServiceImpl implements CatalogService {
             catalogMapper.toCustomer(
                 customer, vehiclesByCustomer.getOrDefault(customer.getId(), List.of())))
         .toList();
+  }
+
+  @Override
+  public DealershipEntity requireDealership(UUID dealershipId) {
+    return dealershipRepository
+        .findById(dealershipId)
+        .orElseThrow(() ->
+            new SchedulerException(
+                ErrorCode.KUSS_RESOURCE_NOT_FOUND, ErrorMessageConstants.DEALERSHIP_NOT_FOUND));
+  }
+
+  @Override
+  public VehicleEntity requireVehicle(UUID vehicleId) {
+    return vehicleRepository
+        .findById(vehicleId)
+        .orElseThrow(() ->
+            new SchedulerException(
+                ErrorCode.KUSS_RESOURCE_NOT_FOUND, ErrorMessageConstants.VEHICLE_NOT_FOUND));
+  }
+
+  @Override
+  public ServiceTypeEntity requireServiceType(String serviceTypeCode) {
+    return serviceTypeRepository
+        .findByCodeAndIsActiveTrue(serviceTypeCode)
+        .orElseThrow(() ->
+            new SchedulerException(
+                ErrorCode.KUSS_RESOURCE_NOT_FOUND, ErrorMessageConstants.SERVICE_TYPE_NOT_FOUND));
   }
 }

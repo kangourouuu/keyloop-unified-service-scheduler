@@ -3,6 +3,7 @@ package com.keyloop.scheduler.common.web;
 import com.keyloop.scheduler.audit.dto.RequestAuditDto;
 import com.keyloop.scheduler.audit.service.RequestAuditService;
 import com.keyloop.scheduler.common.constants.ApiPathConstants;
+import com.keyloop.scheduler.common.constants.BeanNameConstants;
 import com.keyloop.scheduler.common.constants.HeaderConstants;
 import com.keyloop.scheduler.common.constants.RequestConstants;
 import jakarta.servlet.FilterChain;
@@ -21,6 +22,7 @@ import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingRequestWrapper;
@@ -35,7 +37,7 @@ class RequestAuditFilter extends OncePerRequestFilter {
 
   private static final List<String> UNAUDITED_PREFIXES =
       List.of("/actuator", "/v3/api-docs", "/swagger-ui");
-  private static final String BOOKING_METHOD = "POST";
+  private static final String BOOKING_METHOD = HttpMethod.POST.name();
   private static final List<String> BOOKING_PAYLOAD_FIELDS =
       List.of("dealershipId", "vehicleId", "serviceTypeCode", "desiredStartTime");
   private static final int PAYLOAD_CACHE_LIMIT = 4096;
@@ -50,7 +52,7 @@ class RequestAuditFilter extends OncePerRequestFilter {
   RequestAuditFilter(
       Clock clock,
       RequestAuditService requestAuditService,
-      @Qualifier("auditExecutor") Executor auditExecutor,
+      @Qualifier(BeanNameConstants.AUDIT_EXECUTOR) Executor auditExecutor,
       ObjectMapper objectMapper) {
     this.clock = clock;
     this.requestAuditService = requestAuditService;
@@ -58,6 +60,11 @@ class RequestAuditFilter extends OncePerRequestFilter {
     this.objectMapper = objectMapper;
   }
 
+  /**
+   * Assigns the request id, echoes it in the response header and, unless the path is exempt, hands
+   * one audit row to the audit executor after the response is built, so a slow or failing audit
+   * write never delays or fails the request.
+   */
   @Override
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -100,6 +107,11 @@ class RequestAuditFilter extends OncePerRequestFilter {
     }
   }
 
+  /**
+   * Builds the audit row from the finished request: method and path truncated to the column length,
+   * the final status, the error code the handler left on the request, and, for bookings only, the
+   * whitelisted payload fields.
+   */
   private RequestAuditDto toAudit(
       ContentCachingRequestWrapper request,
       HttpServletResponse response,

@@ -9,12 +9,10 @@ import com.keyloop.scheduler.appointment.dto.AppointmentResultDto;
 import com.keyloop.scheduler.appointment.dto.BookAppointmentDto;
 import com.keyloop.scheduler.appointment.service.AppointmentService;
 import com.keyloop.scheduler.common.error.SchedulerException;
-import java.time.Clock;
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -26,12 +24,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 class BookingConcurrencyIT extends IntegrationTestSupport {
 
-  private static final ZoneId LONDON = ZoneId.of("Europe/London");
   private static final int CONTENDERS = 20;
 
   @Autowired private AppointmentService appointmentService;
-
-  @Autowired private Clock clock;
 
   @Test
   void should_book_exactly_3_bays_when_20_requests_race_for_oil_change_slots() throws Exception {
@@ -40,10 +35,10 @@ class BookingConcurrencyIT extends IntegrationTestSupport {
     assertThat(outcomes).filteredOn("201"::equals).hasSize(3);
     assertThat(outcomes).filteredOn("KUSS_NO_CAPACITY"::equals).hasSize(17);
     assertConfirmedUsage(3);
+    Set<UUID> bays =
+        Set.of(SeedIds.LONDON_BAY_1_ID, SeedIds.LONDON_BAY_2_ID, SeedIds.LONDON_BAY_3_ID);
     assertThat(jdbcClient.sql("SELECT service_bay_id FROM appointment").query(UUID.class).list())
-        .allMatch(bay ->
-            List.of(SeedIds.LONDON_BAY_1_ID, SeedIds.LONDON_BAY_2_ID, SeedIds.LONDON_BAY_3_ID)
-                .contains(bay));
+        .allMatch(bays::contains);
   }
 
   @Test
@@ -54,15 +49,15 @@ class BookingConcurrencyIT extends IntegrationTestSupport {
     assertThat(outcomes).filteredOn("201"::equals).hasSize(2);
     assertThat(outcomes).filteredOn("KUSS_NO_CAPACITY"::equals).hasSize(18);
     assertConfirmedUsage(2);
+    Set<UUID> technicians = Set.of(SeedIds.LONDON_TECH_1_ID, SeedIds.LONDON_TECH_3_ID);
     assertThat(jdbcClient.sql("SELECT technician_id FROM appointment").query(UUID.class).list())
-        .allMatch(
-            tech -> List.of(SeedIds.LONDON_TECH_1_ID, SeedIds.LONDON_TECH_3_ID).contains(tech));
+        .allMatch(technicians::contains);
   }
 
   @Test
   void should_free_capacity_when_a_confirmed_booking_is_cancelled() {
     for (int vehicle = 1; vehicle <= 3; vehicle++) {
-      book(SeedIds.vehicle(vehicle), "OIL_CHANGE", nextDayTenAm(), UUID.randomUUID().toString());
+      book(SeedIds.vehicle(vehicle), "OIL_CHANGE", dayAt(10, 0), UUID.randomUUID().toString());
     }
     assertThat(outcomeOf(SeedIds.vehicle(4), "OIL_CHANGE")).isEqualTo("KUSS_NO_CAPACITY");
 
@@ -78,7 +73,7 @@ class BookingConcurrencyIT extends IntegrationTestSupport {
   @Test
   void should_link_customer_vehicle_technician_and_bay_on_the_stored_booking() {
     AppointmentDto appointment =
-        book(SeedIds.vehicle(1), "BRAKE_REPAIR", nextDayTenAm(), UUID.randomUUID().toString())
+        book(SeedIds.vehicle(1), "BRAKE_REPAIR", dayAt(10, 0), UUID.randomUUID().toString())
             .appointment();
 
     assertThat(appointment.customerId()).isEqualTo(SeedIds.CUSTOMER_1_ID);
@@ -103,7 +98,7 @@ class BookingConcurrencyIT extends IntegrationTestSupport {
   }
 
   private List<String> burst(String serviceTypeCode, int contenders) throws Exception {
-    OffsetDateTime start = nextDayTenAm();
+    OffsetDateTime start = dayAt(10, 0);
     CountDownLatch startGate = new CountDownLatch(1);
     List<Future<String>> futures = new ArrayList<>();
     try (ExecutorService executor = Executors.newFixedThreadPool(contenders)) {
@@ -135,7 +130,7 @@ class BookingConcurrencyIT extends IntegrationTestSupport {
   }
 
   private String outcomeOf(UUID vehicleId, String serviceTypeCode) {
-    return bookOutcome(vehicleId, serviceTypeCode, nextDayTenAm(), UUID.randomUUID().toString());
+    return bookOutcome(vehicleId, serviceTypeCode, dayAt(10, 0), UUID.randomUUID().toString());
   }
 
   private AppointmentResultDto book(
@@ -168,9 +163,5 @@ class BookingConcurrencyIT extends IntegrationTestSupport {
         .sql("SELECT count(DISTINCT " + column + ") FROM appointment WHERE status = 'CONFIRMED'")
         .query(Integer.class)
         .single();
-  }
-
-  private OffsetDateTime nextDayTenAm() {
-    return LocalDate.now(clock).plusDays(7).atTime(10, 0).atZone(LONDON).toOffsetDateTime();
   }
 }

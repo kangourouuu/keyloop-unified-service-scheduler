@@ -4,10 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.keyloop.scheduler.IntegrationTestSupport;
 import com.keyloop.scheduler.SeedIds;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -38,6 +37,19 @@ class CatalogApiIT extends IntegrationTestSupport {
   }
 
   @Test
+  void should_expose_is_active_on_bays_and_technicians() {
+    JsonNode detail = jsonOf("/api/v1/dealerships/" + SeedIds.LONDON_DEALERSHIP_ID);
+
+    assertThat(propertyNames(detail.get("bays").get(0)))
+        .contains("isActive")
+        .doesNotContain("active");
+    assertThat(propertyNames(detail.get("technicians").get(0)))
+        .contains("isActive")
+        .doesNotContain("active");
+    assertThat(detail.get("bays").get(0).get("isActive").asBoolean()).isTrue();
+  }
+
+  @Test
   void should_return_404_for_unknown_dealership() {
     ResponseEntity<String> response =
         http.get()
@@ -64,18 +76,18 @@ class CatalogApiIT extends IntegrationTestSupport {
   }
 
   private static Set<String> skillsOf(JsonNode detail, UUID technicianId) {
-    for (JsonNode technician : detail.get("technicians")) {
-      if (technician.get("id").asString().equals(technicianId.toString())) {
-        return Set.copyOf(readStrings(technician.get("skillCodes")));
-      }
-    }
-    throw new AssertionError("technician not found: " + technicianId);
-  }
-
-  private static List<String> readStrings(JsonNode array) {
-    List<String> values = new ArrayList<>();
-    array.forEach(node -> values.add(node.asString()));
-    return values;
+    return detail
+        .get("technicians")
+        .valueStream()
+        .filter(technician -> technician.get("id").asString().equals(technicianId.toString()))
+        .findFirst()
+        .map(technician ->
+            technician
+                .get("skillCodes")
+                .valueStream()
+                .map(JsonNode::asString)
+                .collect(Collectors.toSet()))
+        .orElseThrow(() -> new AssertionError("technician not found: " + technicianId));
   }
 
   private static Set<String> propertyNames(JsonNode node) {

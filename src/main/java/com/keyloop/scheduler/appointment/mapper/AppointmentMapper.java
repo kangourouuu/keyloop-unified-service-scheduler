@@ -8,7 +8,7 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface AppointmentMapper {
 
-  @Mapping(target = "newEntity", ignore = true)
+  @Mapping(target = "isNewEntity", ignore = true)
   AppointmentEntity toEntity(AppointmentDto appointment);
 
   AppointmentDto toDto(AppointmentEntity appointment);

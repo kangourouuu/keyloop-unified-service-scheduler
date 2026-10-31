@@ -38,7 +38,7 @@ public class TechnicianEntity {
   private String fullName;
 
   @Column(name = "active")
-  private Boolean active;
+  private boolean isActive;
 
   @ElementCollection(fetch = FetchType.LAZY)
   @CollectionTable(name = "technician_skill", joinColumns = @JoinColumn(name = "technician_id"))

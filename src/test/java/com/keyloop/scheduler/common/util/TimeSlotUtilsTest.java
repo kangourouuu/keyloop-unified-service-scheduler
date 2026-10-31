@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class TimeSlotUtilsTest {
@@ -94,8 +95,16 @@ class TimeSlotUtilsTest {
   }
 
   private static boolean isBookable(LocalTime time, int durationMinutes) {
-    List<Instant> starts =
-        TimeSlotUtils.candidateStarts(WINTER_DAY, LONDON, EIGHT, SIX_PM, durationMinutes, LONG_AGO);
-    return starts.contains(WINTER_DAY.atTime(time).atZone(LONDON).toInstant());
+    Instant start = WINTER_DAY.atTime(time).atZone(LONDON).toInstant();
+    boolean byArithmetic =
+        TimeSlotUtils.isBookableStart(
+            start, WINTER_DAY, LONDON, EIGHT, SIX_PM, durationMinutes, LONG_AGO);
+    boolean byList =
+        Set.copyOf(
+                TimeSlotUtils.candidateStarts(
+                    WINTER_DAY, LONDON, EIGHT, SIX_PM, durationMinutes, LONG_AGO))
+            .contains(start);
+    assertThat(byArithmetic).isEqualTo(byList);
+    return byArithmetic;
   }
 }

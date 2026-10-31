@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.keyloop.scheduler.IntegrationTestSupport;
 import com.keyloop.scheduler.SeedIds;
-import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -18,10 +17,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 class AvailabilityApiIT extends IntegrationTestSupport {
 
-  private static final ZoneId LONDON = ZoneId.of("Europe/London");
   private static final ZoneId NEW_YORK = ZoneId.of("America/New_York");
-
-  @Autowired private Clock clock;
 
   @Autowired private JsonMapper jsonMapper;
 
@@ -84,6 +80,19 @@ class AvailabilityApiIT extends IntegrationTestSupport {
         get(availabilityPath(SeedIds.LONDON_DEALERSHIP_ID) + "?date=" + sevenDaysAhead());
 
     assertThat(response.getStatusCode().value()).isEqualTo(400);
+  }
+
+  @Test
+  void should_return_400_when_service_type_is_blank_or_longer_than_40_characters() {
+    ResponseEntity<String> blank =
+        get(availabilityUri(SeedIds.LONDON_DEALERSHIP_ID, sevenDaysAhead(), " "));
+    ResponseEntity<String> tooLong =
+        get(availabilityUri(SeedIds.LONDON_DEALERSHIP_ID, sevenDaysAhead(), "S".repeat(41)));
+
+    assertThat(blank.getStatusCode().value()).isEqualTo(400);
+    assertThat(blank.getBody()).contains("KUSS_VALIDATION_FAILED");
+    assertThat(tooLong.getStatusCode().value()).isEqualTo(400);
+    assertThat(tooLong.getBody()).contains("KUSS_VALIDATION_FAILED");
   }
 
   @Test
@@ -155,11 +164,12 @@ class AvailabilityApiIT extends IntegrationTestSupport {
   }
 
   private static int capacityAt(JsonNode body, Instant start) {
-    for (JsonNode slot : body.get("slots")) {
-      if (OffsetDateTime.parse(slot.get("startTime").asString()).toInstant().equals(start)) {
-        return slot.get("availableCapacity").asInt();
-      }
-    }
-    throw new AssertionError("no slot starts at " + start);
+    return body.get("slots")
+        .valueStream()
+        .filter(slot ->
+            OffsetDateTime.parse(slot.get("startTime").asString()).toInstant().equals(start))
+        .findFirst()
+        .map(slot -> slot.get("availableCapacity").asInt())
+        .orElseThrow(() -> new AssertionError("no slot starts at " + start));
   }
 }

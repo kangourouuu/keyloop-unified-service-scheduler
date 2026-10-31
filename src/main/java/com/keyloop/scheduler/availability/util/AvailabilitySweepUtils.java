@@ -5,15 +5,20 @@ import com.keyloop.scheduler.availability.dto.SlotDto;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 public final class AvailabilitySweepUtils {
 
   private AvailabilitySweepUtils() {}
 
+  /**
+   * Computes the capacity of every candidate start: the smaller of the free bays and the free
+   * qualified technicians over the whole service duration, where a resource is busy when a
+   * confirmed appointment overlaps the slot. Starts with no capacity are dropped.
+   */
   public static List<SlotDto> sweep(
       List<Instant> starts,
       int durationMinutes,
@@ -39,14 +44,15 @@ public final class AvailabilitySweepUtils {
       Set<UUID> bayIds,
       Set<UUID> technicianIds,
       List<BusyIntervalDto> busy) {
-    Set<UUID> busyBays = new HashSet<>();
-    Set<UUID> busyTechnicians = new HashSet<>();
-    for (BusyIntervalDto interval : busy) {
-      if (interval.startTime().isBefore(end) && start.isBefore(interval.endTime())) {
-        busyBays.add(interval.serviceBayId());
-        busyTechnicians.add(interval.technicianId());
-      }
-    }
+    List<BusyIntervalDto> overlapping =
+        busy.stream()
+            .filter(interval ->
+                interval.startTime().isBefore(end) && start.isBefore(interval.endTime()))
+            .toList();
+    Set<UUID> busyBays =
+        overlapping.stream().map(BusyIntervalDto::serviceBayId).collect(Collectors.toSet());
+    Set<UUID> busyTechnicians =
+        overlapping.stream().map(BusyIntervalDto::technicianId).collect(Collectors.toSet());
     long freeBays = bayIds.stream().filter(id -> !busyBays.contains(id)).count();
     long freeTechnicians =
         technicianIds.stream().filter(id -> !busyTechnicians.contains(id)).count();

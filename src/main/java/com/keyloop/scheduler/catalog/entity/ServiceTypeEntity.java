@@ -31,5 +31,5 @@ public class ServiceTypeEntity {
   private Integer durationMinutes;
 
   @Column(name = "active")
-  private Boolean active;
+  private boolean isActive;
 }
