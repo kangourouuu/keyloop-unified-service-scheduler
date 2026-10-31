@@ -27,11 +27,10 @@ Options:
 3. Don't persist
 
 Category: Assumptions
-Question: "The plan assumes API rate limiting is not needed. Is this correct?"
+Question: "The plan inserts the idempotency key after the appointment row, so a concurrent duplicate gets KUSS_VEHICLE_ALREADY_BOOKED instead of KUSS_IDEMPOTENCY_IN_FLIGHT. Keep that order?"
 Options:
-1. Yes, not needed for MVP
-2. No, add basic rate limiting now (Recommended)
-3. Defer to Phase 2
+1. Claim the key at transaction entry (Recommended)
+2. Keep insert-after order and change mandatory test 6
 
 ## Validation Log Format
 

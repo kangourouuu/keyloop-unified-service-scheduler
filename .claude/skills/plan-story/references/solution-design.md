@@ -17,47 +17,39 @@ Follow these fundamental principles:
 - Assess development effort vs benefit
 - Recommend optimal solution based on current best practices
 
-### Security Assessment
-- Identify potential vulnerabilities during design phase
-- Consider authentication and authorization requirements
-- Assess data protection needs
-- Evaluate input validation requirements
-- Plan for secure configuration management
-- Address OWASP Top 10 concerns
-- Consider API security (rate limiting, CORS, etc.)
+### Booking Correctness (check first)
+- Bay, technician and vehicle overlap is prevented by the partial `EXCLUDE USING gist` constraints, not app-level locks
+- `23P01`: vehicle constraint → `409` at once; bay/technician constraint → re-query free pairs and retry until none left (savepoint per attempt)
+- Technician qualification (`technician_skill`) and dealership scope are checked in the service layer — the DB enforces overlap only
+- Idempotency key row is written in the same transaction as the booking/cancel
+- Every booking-path change keeps the concurrency test (N parallel requests, K free pairs → exactly K `201`)
 
-### Performance & Scalability
-- Identify potential bottlenecks early
-- Consider database query optimization needs
-- Plan for caching strategies
-- Assess resource usage (memory, CPU, network)
-- Design for horizontal/vertical scaling
-- Plan for load distribution
-- Consider asynchronous processing where appropriate
+### Security Assessment
+- Validate input at the controller boundary (DTO, 30-minute grid, opening hours, future time)
+- Errors leave only as `ProblemDetail` with a `KUSS_*` code; no stack traces, SQL or PII in `detail` or `request_audit`
+- Parameterized queries only; no secrets in git
+- No AuthN/AuthZ in V1 (roadmap) — don't plan it unless the story asks
+
+### Performance
+- Indexed reads for availability and daily schedules; no N+1; pagination on lists
+- `@Transactional(readOnly = true)` on read paths; no external calls inside a DB transaction
+- Redis, RabbitMQ and WebSocket are roadmap only (`docs/brainstorm/first-draft-high-level.md` §10) — don't plan caches or message brokers
 
 ### Edge Cases & Failure Modes
-- Think through error scenarios
-- Plan for network failures
-- Consider partial failure handling
-- Design retry and fallback mechanisms
-- Plan for data consistency
-- Consider race conditions
-- Design for graceful degradation
+- `[)` ranges: back-to-back slots (09:00–10:00, 10:00–11:00) both succeed
+- Timezones: grid and opening hours in dealership-local time, storage as UTC `timestamptz`
+- Rollback leaves no booking and no idempotency key, so a client retry runs fresh
+- Rolled-back `409`/`500` are still audited (`REQUIRES_NEW`); an audit failure never fails the request
+- Retry loop terminates in at most K attempts; same key in flight → `409 KUSS_IDEMPOTENCY_IN_FLIGHT`
 
 ### Architecture Design
-- Create scalable system architectures
-- Design for maintainability
-- Plan component interactions
-- Design data flow
-- Consider microservices vs monolith trade-offs
-- Plan API contracts
-- Design state management
+- One stateless Spring Boot service + PostgreSQL; correctness lives in the DB
+- Class roles per `.claude/rules/java-conventions.md`
+- API contracts match the API surface and error catalog in `docs/system-design.md`; flag any change as breaking
 
 ## Best Practices
 
-- Document design decisions and rationale
-- Consider both technical and business requirements
-- Think through the entire user journey
-- Plan for monitoring and observability
-- Design with testing in mind
-- Consider deployment and rollback strategies
+- Document design decisions and rationale; resolve open `TODO(design)` items in `docs/system-design.md` explicitly
+- Plan observability: structured logs with `requestId`, Micrometer metrics on booking success / conflict / retries
+- Design with testing in mind: each phase names the `*Test` / `*IT` cases it needs (`senior-qa` agent generates them)
+- Flyway migrations are forward-only

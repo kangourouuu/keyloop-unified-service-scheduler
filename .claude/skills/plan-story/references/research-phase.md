@@ -9,15 +9,15 @@
 - Wait for all researcher agents to report back before proceeding
 - Each researcher investigates a specific aspect or approach
 
-### Sequential Thinking
+### Brainstorming
 - Use `superpowers:brainstorming` skill for dynamic and reflective problem-solving
 - Structured thinking process for complex analysis
 - Enables multi-step reasoning with revision capability
 
 ### Documentation Research
 - Use `WebFetch/WebSearch` skill to read and understand documentation
-- Research plugins, packages, and frameworks
-- Find latest technical documentation using llms.txt standard
+- Prefer official docs: Spring Boot 4, Spring Framework, PostgreSQL, Testcontainers, Flyway
+- Check the version actually in the build before trusting an answer
 
 ### GitHub Analysis
 - Use `gh` command to read and analyze:

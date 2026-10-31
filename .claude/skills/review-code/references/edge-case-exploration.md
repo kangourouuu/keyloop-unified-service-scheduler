@@ -39,8 +39,8 @@ Find:
 2. Data flow paths through modified functions
 3. Error handling paths not tested
 4. Boundary conditions (null, empty, max)
-5. Race conditions in async code
-6. Transaction boundaries, cache invalidation, message publish ordering
+5. Race conditions: concurrent bookings, `23P01` retry, in-flight idempotency keys
+6. Transaction boundaries (rollback leaves no booking and no key), async audit (`REQUIRES_NEW`)
 ")
 ```
 
@@ -98,21 +98,21 @@ Find: importers, behavior diffs, removed functionality
 ## Red Flags
 
 - Shared utility changed but only one caller tested
-- Error path leads to unhandled rejection
+- Error path escapes the `*GlobalHandler` (raw 500, stack trace in body)
 - State modified in place without notification
 - Breaking change without migration
 
 ## Example
 
 ```
-1. Done: Add cache to UserService.getUser()
-2. Diff: src/services/user-service.java
-3. Explore: "edge cases for caching in getUser()"
+1. Done: Add cancel to AppointmentServiceImpl
+2. Diff: AppointmentServiceImpl.java, AppointmentController.java
+3. Explore: "edge cases for cancel"
 4. Report:
-   - ProfileComponent expects fresh data on edit
-   - AdminPanel loops getUser() (memory risk)
-   - No cache clear on updateUser()
-5. Fix: Add invalidation, maxSize
+   - Cancel after start time not rejected (needs 409 KUSS_APPOINTMENT_ALREADY_STARTED)
+   - Already-cancelled appointment returns 409 instead of 200
+   - Idempotency key not written in the cancel transaction
+5. Fix: Add the checks + key write in the same transaction
 6. Document for code-reviewer
 ```
 

@@ -27,6 +27,12 @@ Task(subagent_type="planner", prompt="Create implementation plan based on report
 - Input: researcher and exploration reports
 - Output: `plan.md` + `phase-XX-*.md` files
 
+## Test Case Generation
+```
+Task(subagent_type="senior-qa", prompt="Generate test cases for [phase-file]. Plan dir: [plan-dir]", description="Generate test cases [phase]")
+```
+- Writes the case list to `{plan-dir}/reports/` + JUnit `*Test`/`*IT`; never touches `src/main`
+
 ## Testing
 ```
 Task(subagent_type="tester", prompt="Run test suite for plan phase [phase-name]", description="Test [phase]")

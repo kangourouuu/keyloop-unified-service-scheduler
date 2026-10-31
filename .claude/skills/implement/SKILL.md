@@ -28,8 +28,8 @@ End-to-end implementation with automatic workflow detection.
 
 **Example:**
 ```
-/implement "Add user authentication to the app" --fast
-/implement path/to/plan.md --auto
+/implement "Add cancel endpoint for appointments" --fast
+/implement plans/261031-KUSS-04-booking-api/plan.md --auto
 ```
 
 ## Smart Intent Detection
@@ -94,7 +94,7 @@ Human review required at these checkpoints (skipped with `--auto`):
 | Research | `researcher` | Optional in fast/code |
 | Explore | native `Explore` | Optional in code |
 | Plan | `planner` | Optional in code |
-| Testing | `tester`, `debugger` | **MUST** spawn |
+| Testing | `senior-qa`, `tester`, `debugger` | **MUST** spawn |
 | Review | `code-reviewer` | **MUST** spawn |
 | Finalize | `project-manager`, `docs-manager`, `git-manager` | **MUST** spawn all 3 |
 

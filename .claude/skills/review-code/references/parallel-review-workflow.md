@@ -9,7 +9,7 @@
 ### 1. Ultrathink Edge Cases
 
 Main agent deeply analyzes the scope to LIST all potential edge cases FIRST:
-- Read `codebase-summary.md` for context
+- Read `docs/system-design.md` for context
 - Use native `Explore` subagent (or Glob/Grep for targeted lookups) to find relevant files
 - **Think exhaustively** about what could go wrong:
   - Null / Optional.empty scenarios

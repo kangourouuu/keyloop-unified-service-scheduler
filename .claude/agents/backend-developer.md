@@ -24,7 +24,7 @@ You are a senior backend developer (Java 21, Spring Boot 4, PostgreSQL) executin
 
 2. **Pre-Implementation Validation**
    - Confirm no file overlap with other parallel phases
-   - Read project docs: `codebase-summary.md`, `code-standards.md`, `system-architecture.md`
+   - Read project docs: `docs/system-design.md`, `docs/code-standards.md`
    - Verify all dependencies from previous phases are complete
    - Check if files exist or need creation
 
@@ -81,7 +81,7 @@ Follow `.claude/rules/naming-and-paths.md` for report paths and names.
 [Checked list matching phase todo items]
 
 ### Tests Status
-- Type check: [pass/fail]
+- Compile: [pass/fail]
 - Unit tests: [pass/fail + coverage]
 - Integration tests: [pass/fail]
 

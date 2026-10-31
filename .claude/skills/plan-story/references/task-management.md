@@ -47,11 +47,11 @@ The **hydration pattern** bridges sessions:
 
 ```
 TaskCreate(
-  subject: "Setup environment and dependencies",
-  activeForm: "Setting up environment",
-  description: "Install packages, configure env, setup database. See phase-01-setup.md",
+  subject: "Add schema migrations and seed data",
+  activeForm: "Adding schema migrations",
+  description: "Flyway schema with EXCLUDE constraints + seed fixtures. See phase-01-schema-and-migrations.md",
   metadata: { phase: 1, priority: "P1", effort: "2h",
-              planDir: "plans/260205-auth/", phaseFile: "phase-01-setup.md" }
+              planDir: "plans/261031-KUSS-04-booking-api/", phaseFile: "phase-01-schema-and-migrations.md" }
 )
 ```
 
@@ -61,11 +61,11 @@ For high-risk/complex steps within phases:
 
 ```
 TaskCreate(
-  subject: "Implement OAuth2 token refresh",
-  activeForm: "Implementing token refresh",
-  description: "Handle token expiry, refresh flow, error recovery",
+  subject: "Implement 23P01 retry loop",
+  activeForm: "Implementing 23P01 retry loop",
+  description: "Savepoint per attempt; vehicle conflict → 409, bay/tech conflict → re-query until no free pair",
   metadata: { phase: 3, step: "3.4", priority: "P1", effort: "1.5h",
-              planDir: "plans/260205-auth/", phaseFile: "phase-03-api.md",
+              planDir: "plans/261031-KUSS-04-booking-api/", phaseFile: "phase-03-availability-and-booking-api.md",
               critical: true, riskLevel: "high" },
   addBlockedBy: ["{phase-2-task-id}"]
 )
@@ -77,10 +77,10 @@ TaskCreate(
 **Optional metadata:** `step`, `critical`, `riskLevel`, `dependencies`
 
 **subject** (imperative): Action verb + deliverable, <60 chars
-- "Setup database migrations", "Implement OAuth2 flow", "Create user profile endpoints"
+- "Add schema migrations", "Implement booking retry loop", "Create cancel endpoint"
 
 **activeForm** (present continuous): Matches subject in -ing form
-- "Setting up database", "Implementing OAuth2", "Creating user profile endpoints"
+- "Adding schema migrations", "Implementing booking retry loop", "Creating cancel endpoint"
 
 **description**: 1-2 sentences, concrete deliverables, reference phase file
 

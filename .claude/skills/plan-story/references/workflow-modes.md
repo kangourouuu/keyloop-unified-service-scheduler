@@ -17,7 +17,7 @@ Use `AskUserQuestion` if detection is uncertain.
 
 No research. Analyze → Plan → Hydrate Tasks.
 
-1. Read codebase docs (`codebase-summary.md`, `code-standards.md`, `system-design.md`)
+1. Read codebase docs (`system-design.md`, `code-standards.md`, `brainstorm/first-draft-high-level.md`)
 2. Use `planner` subagent to create plan
 3. Hydrate tasks (unless `--no-tasks`)
 4. **Context reminder:** `/implement --auto {absolute-plan-path}/plan.md`
@@ -57,7 +57,7 @@ Research → Explore → Plan with file ownership → Red Team → Validate → 
 - Each phase self-contained, no runtime deps on other phases
 - Clear file boundaries — each file modified in ONE phase only
 - Group by: architectural layer, feature domain, or technology stack
-- Example: Phases 1-3 parallel (DB schema / booking API / messaging), Phase 4 sequential (integration tests)
+- Example: Phases 1-3 parallel (Flyway schema / availability API / request audit), Phase 4 sequential (integration tests)
 
 ## Two-Approach Mode (`--two`)
 

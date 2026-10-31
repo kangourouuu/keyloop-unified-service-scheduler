@@ -49,18 +49,18 @@ See SKILL.md "Active Plan State" section for full rules. Key points:
 **Example plan.md structure:**
 ```markdown
 ---
-title: "Feature Implementation Plan"
-description: "Add user authentication with OAuth2 support"
+title: "Booking API Implementation Plan"
+description: "Book and cancel appointments with bay + technician allocation and idempotency"
 status: pending
 priority: P1
 effort: 8h
-issue: 123
-branch: kai/feat/oauth-auth
-tags: [auth, backend, security]
-created: 2025-12-16
+story: KUSS-04
+branch: feature/KUSS-04-booking-api
+tags: [feature, backend, api, database]
+created: 2026-10-31
 ---
 
-# Feature Implementation Plan
+# Booking API Implementation Plan
 
 ## Overview
 

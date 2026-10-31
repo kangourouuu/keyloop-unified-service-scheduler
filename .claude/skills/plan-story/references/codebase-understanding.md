@@ -6,7 +6,7 @@
 
 ### Native Explore Subagents
 - Targeted lookup (known class/file) → Glob/Grep/Read directly
-- Broad sweep → spawn native `Explore` subagents in parallel, one per area (e.g. booking domain, persistence, messaging)
+- Broad sweep → spawn native `Explore` subagents in parallel, one per area (e.g. booking domain, persistence, API/error handling)
 - Wait for all to report back before analysis
 - Efficient for finding relevant code across large codebases
 
@@ -20,24 +20,24 @@ ALWAYS read these files first:
    - Code quality standards
    - Security guidelines
 
-2. **`./docs/codebase-summary.md`**
-   - Project structure and current status
-   - High-level architecture overview
-   - Component relationships
+2. **`./docs/system-design.md`**
+   - Architecture, components, data model + `EXCLUDE` constraints
+   - Data flow (availability, booking retry loop, cancel, audit), API surface, `KUSS_*` error catalog
+   - Open `TODO(design)` items the plan must resolve
 
-3. **`./docs/code-standards.md`**
-   - Coding conventions and standards
-   - Language-specific patterns
-   - Naming conventions
+3. **`./docs/code-standards.md`** (agent checklist: `.claude/rules/java-conventions.md`)
+   - Class suffixes, records for DTOs, methods ≤ 20 lines, `*Test` vs `*IT`
 
-4. **`./docs/system-design.md`** (if exists)
-   - Design system guidelines
+4. **`./docs/brainstorm/first-draft-high-level.md`**
+   - Approved design, developer decisions and mandatory test scenarios (§12), roadmap-only items (§10)
+
+5. **`./docs/codebase-summary.md`** (if exists)
+   - Current module map
 
 ### Environment Analysis
-- Review development environment setup
-- Analyze dotenv files and configuration
-- Identify required dependencies
-- Understand build and deployment processes
+- `pom.xml` / `build.gradle` (whichever exists): dependencies, Surefire/Failsafe, Checkstyle
+- `docker-compose.yml`, `application*.yml`: Postgres config, profiles
+- Flyway migrations: current schema and seed data
 
 ### Pattern Recognition
 - Study existing patterns in codebase
@@ -48,7 +48,7 @@ ALWAYS read these files first:
 ### Integration Planning
 - Identify how new features integrate with existing architecture
 - Map dependencies between components
-- Understand data flow and state management
+- Understand data flow and transaction boundaries
 - Consider backward compatibility
 
 ## Best Practices

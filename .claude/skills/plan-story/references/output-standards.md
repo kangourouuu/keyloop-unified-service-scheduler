@@ -13,8 +13,8 @@ description: "{One-sentence summary for card preview}"
 status: pending  # pending | in-progress | completed | cancelled
 priority: P2     # P1 (High) | P2 (Medium) | P3 (Low)
 effort: 4h       # Estimated total effort
-issue: 74        # GitHub issue number (if applicable)
-branch: kai/feat/feature-name
+story: KUSS-XX   # From branch name
+branch: feature/KUSS-XX-short-description
 tags: [backend, database]  # Category tags
 created: 2025-12-16
 ---
@@ -28,25 +28,25 @@ When creating plans, auto-populate these fields:
 - **status**: Always `pending` for new plans
 - **priority**: From user request or default `P2`
 - **effort**: Sum of phase estimates
-- **issue**: Parse from branch name or context
+- **story**: `KUSS-XX` from branch name (ask if missing)
 - **branch**: Current git branch (`git branch --show-current`)
-- **tags**: Infer from task keywords (e.g., backend, database, api, messaging, cache)
+- **tags**: Infer from task keywords (e.g., backend, database, api, concurrency)
 - **created**: Today's date in YYYY-MM-DD format
 
 ### Tag Vocabulary (Recommended)
 
 Use these predefined tags for consistency:
 - **Type**: `feature`, `bugfix`, `refactor`, `docs`, `infra`
-- **Domain**: `backend`, `database`, `api`, `messaging`, `cache`
+- **Domain**: `backend`, `database`, `api`, `concurrency`, `observability`
 - **Scope**: `critical`, `tech-debt`, `experimental`
 
 ### Task Naming Conventions
 
 **subject** (imperative): Action verb + deliverable, <60 chars
-  Examples: "Setup database migrations", "Implement OAuth2 flow"
+  Examples: "Add schema migrations", "Implement booking retry loop"
 
 **activeForm** (continuous): Present participle of subject
-  Examples: "Setting up database", "Implementing OAuth2"
+  Examples: "Adding schema migrations", "Implementing booking retry loop"
 
 **description**: 1-2 sentences, concrete deliverables, reference phase file
 

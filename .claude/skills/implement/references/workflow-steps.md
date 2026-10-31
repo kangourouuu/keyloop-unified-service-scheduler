@@ -86,7 +86,7 @@ All modes share core steps with mode-specific variations.
 ## Step 4: Testing (skip if no-test mode)
 
 **All modes (except no-test):**
-- Write tests: happy path, edge cases, errors
+- **MUST** spawn `senior-qa` subagent to generate the test-case list + JUnit `*Test`/`*IT` code: `Task(subagent_type="senior-qa", prompt="Generate test cases for [phase-file]. Plan dir: [plan-dir]", description="Generate test cases")`
 - **MUST** spawn `tester` subagent: `Task(subagent_type="tester", prompt="Run test suite", description="Run tests")`
 - If failures: **MUST** spawn `debugger` subagent → fix → repeat
 - **Forbidden:** fake mocks, commented tests, changed assertions, skipping subagent delegation
@@ -131,7 +131,7 @@ All modes share core steps with mode-specific variations.
    - Update `plan.md` status/progress (`pending`/`in-progress`/`completed`) from actual checkbox state.
    - Return unresolved mappings if any completed task cannot be matched to a phase file.
 3. Use `TaskUpdate` to mark Claude Tasks complete after sync-back confirmation.
-4. Onboarding check (API keys, env vars)
+4. Config check: new properties / env vars documented in README and `docker-compose.yml`; no secrets committed
 5. **MUST** spawn git subagent: `Task(subagent_type="git-manager", prompt="Stage and commit changes as [KUSS-XX] Description", description="Commit")`
 
 **CRITICAL:** Step 6 is INCOMPLETE without spawning all 3 subagents. DO NOT skip subagent delegation.
@@ -160,7 +160,7 @@ code:        0 → skip → skip → 3 → [R] → 4 → [R] → 5(user) → 6
 
 - Never skip steps without mode justification
 - **MANDATORY SUBAGENT DELEGATION:** Steps 4, 5, 6 MUST spawn subagents via Task tool. DO NOT implement directly.
-  - Step 4: `tester` (and `debugger` if failures)
+  - Step 4: `senior-qa`, `tester` (and `debugger` if failures)
   - Step 5: `code-reviewer`
   - Step 6: `project-manager`, `docs-manager`, `git-manager`
 - Use `TaskCreate` to create Claude Tasks for each unchecked item with priority order and dependencies.

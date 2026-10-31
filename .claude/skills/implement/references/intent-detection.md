@@ -42,9 +42,9 @@ FUNCTION detectMode(input):
 Detect multiple features from natural language:
 
 ```
-"implement auth, payments, and notifications" → ["auth", "payments", "notifications"]
-"add login + signup + password reset"        → ["login", "signup", "password reset"]
-"create dashboard with charts and tables"    → single feature (dashboard)
+"add availability, booking, and cancel endpoints" → ["availability", "booking", "cancel"]
+"add request audit + idempotency + error catalog" → ["request audit", "idempotency", "error catalog"]
+"add availability endpoint with 30m grid sweep"   → single feature (availability)
 ```
 
 **Parallel trigger:** 3+ distinct features = parallel mode
@@ -67,25 +67,25 @@ Detect multiple features from natural language:
 ## Examples
 
 ```
-"/implement implement user auth"
+"/implement add cancel endpoint"
 → Mode: interactive (default, stops at review gates)
 
-"/implement plans/260120-auth/phase-02-api.md"
+"/implement plans/261031-KUSS-04-booking-api/phase-02-booking-domain.md"
 → Mode: code (path detected, stops at review gates)
 
-"/implement quick fix for the login bug"
+"/implement quick fix for the 23P01 retry loop"
 → Mode: fast ("quick" keyword, stops at review gates)
 
-"/implement implement auth, payments, notifications, shipping"
+"/implement add availability, booking, cancel, request audit"
 → Mode: parallel (4 features, stops at review gates)
 
-"/implement implement dashboard --fast"
+"/implement add availability endpoint --fast"
 → Mode: fast (explicit flag, stops at review gates)
 
 "/implement implement everything --auto"
 → Mode: auto (NO STOPS, implements all phases continuously)
 
-"/implement implement dashboard trust me"
+"/implement add cancel endpoint trust me"
 → Mode: auto ("trust me" keyword, NO STOPS)
 ```
 

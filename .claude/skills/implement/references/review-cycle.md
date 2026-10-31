@@ -63,8 +63,9 @@ LOOP:
 ```
 
 ## Critical Issues Definition
-- Security: XSS, SQL injection, OWASP vulnerabilities
-- Performance: bottlenecks, inefficient algorithms
+- Correctness: double-booking possible (bay, technician or vehicle), duplicate or lost booking on retry, idempotency key outside the booking transaction
+- Security: SQL injection, stack traces / SQL / PII in `ProblemDetail` or `request_audit`, OWASP vulnerabilities
+- Performance: N+1 or unindexed availability reads, inefficient algorithms
 - Architecture: violations of patterns, coupling
 - Principles: YAGNI, KISS, DRY violations
 
