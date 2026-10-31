@@ -51,6 +51,8 @@ interface ServiceBayRepository extends JpaRepository<ServiceBayEntity, UUID> {
 }
 ```
 
+The boolean field is `isActive` (column `active`). Renaming it changed the JSON property of bays and technicians from `active` to `isActive`: a **breaking API change**, recorded in the Developer decisions log.
+
 ### Entity: lower snake_case table names, Lombok `@Getter @Setter`, never `@Data`
 
 ```java
@@ -337,6 +339,8 @@ Each rule above that changed after the first version of this file keeps the agen
 - **Package layout (§1).** Layout by role: `<domain>/{controller, service, service/impl, repository, entity, dto, mapper, config, util}`. **Developer decision (relayed by orchestrator, 2026-10-31):** adopted; existing files moved in one commit. **Reason:** a reader finds a class by its role, not by scanning one flat package.
 - **Constants (§1).** Agent selection: literals inline at each use, attribute keys inside `RequestAuditFilter`, SQL in repositories. **Developer decision (after review, 2026-10-31):** messages and shared names in `common.constants` `*Constants` classes; one-class literals stay private; SQL stays in repositories (confirms red-team #13) — overrides. **Reason:** one place per message and name, no drift between duplicates.
 - **Data access (§2).** Agent selection: JPA reads + JdbcClient writes (plan decision 1, A-024). **Developer decision (after review, 2026-10-31):** JPA only, incl. booking, idempotency, cancel, audit and partition DDL via native queries; tests may keep raw JDBC for lock/race harnesses — overrides. **Reason:** one data-access style; JPQL/@Query instead of hand-written JDBC.
+- **Data access, no locks (§2).** Agent selection: cancel locks the row with `SELECT ... FOR UPDATE` / `@Lock(PESSIMISTIC_WRITE)` (A-023 #2). **Developer decision (after review, 2026-10-31):** cancel is one atomic conditional `UPDATE ... WHERE status = CONFIRMED AND start_time > now`, idempotency completion is one conditional `UPDATE`, and there are no explicit locks anywhere — **overrides** the lock prescription. **Reason:** the developer's original rule, "do not lock table, use atomic conditional update".
+- **Boolean `isActive` is a breaking API change (§2).** Agent selection: persisted booleans named `active`. **Developer decision (after review, 2026-10-31):** the Java field, the repository methods and the JSON property become `isActive` (the column stays `active`) — **overrides**. This **breaks the API contract**: `GET /api/v1/dealerships/{id}` returns `isActive` instead of `active` on bays and technicians, and clients that read `active` must change. **Reason:** boolean fields start with `is`/`has`/`can`/`should`.
 - **Formatting (§5).** Agent selection: none (Checkstyle `MethodLength` only). **Developer decision (after review, 2026-10-31):** Spotless with google-java-format, imports, sortPom, SQL, YAML, Markdown; `check` fails `./mvnw verify` — adds. **Reason:** one format, enforced by the build.
 - **Java style (§5).** Agent selection: AOSP style (4-space), chosen by the KUSS-04 implementer to match the doc examples. **Developer decision (after review, 2026-10-31):** default Google style, 2-space, with the examples converted — overrides. **Reason:** keep the formatter's standard style; docs follow the code.
 
