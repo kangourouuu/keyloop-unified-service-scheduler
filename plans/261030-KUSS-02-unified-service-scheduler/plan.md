@@ -16,7 +16,7 @@ created: 2026-10-30
 ## Overview
 Implements approved design `docs/brainstorm/first-draft-high-level.md` (Approach A). Planned under KUSS-02; all code ships in KUSS-04.
 **All phases ship on one branch `feature/KUSS-04-unified-service-scheduler`; each phase = ≥1 `[KUSS-04]` commit.** TDD: every phase writes its failing tests first.
-Stack (research-01): Boot 4.0.9, Java 21 virtual threads, Maven wrapper, Postgres 17, Flyway, JPA reads + `JdbcClient` writes, Testcontainers 2.0.5, springdoc 3.2.0, Jackson 3.
+Stack (research-01): Boot 4.0.9, Java 21 virtual threads, Maven wrapper, Postgres 17, Flyway, JPA reads + `JdbcClient` writes, Testcontainers 2.0.5, springdoc 3.2.0, Jackson 3. <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 
 ## Phases
 | # | Phase | Story | Status | Effort | Link |
@@ -66,13 +66,14 @@ Binding for KUSS-04. Full text: `docs/code-standards.md` (§1–§5 and its Deve
 | 7 | Schema changes | Flyway `V1`/`V2` + `ddl-auto: validate` (phases 01–02) | `validate` **confirmed**; **adds** `generate-ddl: false`, `clean-disabled: true`, never edit a committed migration, every schema change via Flyway; only exception: phase 07's job creating/dropping `request_audit` day partitions (never alters columns, indexes, constraints) | One auditable source of schema history; daily partitions cannot be versioned migrations |
 | 8 | Migration file names | `V1__schema.sql`, `V2__seed.sql` | `V<version>__<description>.sql`: sequential integer, lower snake_case description starting with a verb (`V1__create_schema.sql`, `V2__insert_seed_data.sql`). **Overrides** | The file name says what the migration does |
 | 9 | Constants | Literals inline at each use; request attribute keys as constants inside `RequestAuditFilter`; SQL as `private static final` text blocks in each repository (red-team #13) | Every error/detail message and every name shared across classes (headers, request attribute/MDC keys, metric names) lives in `com.keyloop.scheduler.common.constants` as `*Constants` classes (`ErrorMessageConstants`, `HeaderConstants`, `RequestConstants`, `MetricConstants`; final class, private constructor). A literal used in one class only stays `private static final` there. SQL stays in its repository (red-team #13 **confirmed**). **Overrides** inline messages | One place per message and name; no drift between duplicates |
+| 10 | Data access | JPA reads + `JdbcClient` writes (plan decision 1; cross-review A-024 agreed: no dirty checking, exact SQLState on the write statement) | JPA only in `src/main`, no `JdbcClient`: Spring Data repositories with JPQL `@Query` (`nativeQuery=true` only where JPQL cannot express it); booking, idempotency claim, cancel (`@Lock` PESSIMISTIC_WRITE) and audit writes via entities with persist + flush inside each per-attempt transaction; SQLState read from the exception cause chain; partition DDL in `MaintenanceService` as `EntityManager` native queries (names only from the date formatter or the regex, rule unchanged); tests may keep raw JDBC connections for lock and race harnesses. **Overrides** | One data-access style; JPQL/`@Query` instead of hand-written JDBC |
 
 The `//` notes inside this plan's code snippets are for the reader only; don't copy them into code.
 
 ## Draft corrections (C-017 gaps → resolution → phase)
 | C-017 | Resolution | Phase |
 |---|---|---|
-| #1 retry in one tx | Whole tx per attempt via `TransactionTemplate`; no savepoints/NESTED (Hibernate keeps failed state, researcher-02 §2, A-022 #1); writes via `JdbcClient` | 5 |
+| #1 retry in one tx | Whole tx per attempt via `TransactionTemplate`; no savepoints/NESTED (Hibernate keeps failed state, researcher-02 §2, A-022 #1); writes via `JdbcClient` | 5 | <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 | #2 IN_FLIGHT unreachable | Claim-first: `SELECT` key, else plain `INSERT` claim; 23505 → 409; response cols nullable; NO `lock_timeout` (would cap EXCLUDE waits) | 2, 5 |
 | #3 audit PK / partitions | `PRIMARY KEY (id, occurred_at)`, column `occurred_at`; D..D+7 at startup + daily, `IF NOT EXISTS`, failures logged | 2, 7 |
 | #4 audit starves pool | Bounded executor (2/2/1000), rejection counted + WARN, dispatched after business tx | 7 |
@@ -118,7 +119,7 @@ Also: draft §7.2 "rollback sub-tx" and "insert key last" superseded by rows #1/
 - Single shared Testcontainers context → ITs truncate `appointment` + `idempotency_key` before each test.
 
 ## Planner open questions (resolved by Claude Code, 2026-10-30)
-- No `*Entity`/`*Repository` for `idempotency_key` / `request_audit`: nothing reads them via JPA; writes are `JdbcClient` (YAGNI). Kept.
+- No `*Entity`/`*Repository` for `idempotency_key` / `request_audit`: nothing reads them via JPA; writes are `JdbcClient` (YAGNI). Kept. <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 - Replays count as `result=confirmed`; DTO-level 400s visible via `http.server.requests` + audit only. Kept.
 - `service_type` tag bounded by one PK `existsById` lookup per booking (`unknown` otherwise). Superseded by Red Team #13: tag = request code only for post-validation outcomes, no lookup.
 - `ddl-auto: validate` kept (catches mapping drift).
@@ -128,11 +129,11 @@ Also: draft §7.2 "rollback sub-tx" and "insert key last" superseded by rows #1/
 Thread: `docs/agent-discussion/claude-to-antigravity.md` C-017–C-021 ↔ `antigravity-to-claude.md` A-022–A-024. Reviewer: Antigravity (Gemini 3.8 Flash, high).
 | Entry | Point | Outcome | Applied to |
 |---|---|---|---|
-| A-022 #1 | Hibernate marks tx rollback-only on 23P01 → write path off JPA | Already in plan (JdbcClient + whole-tx retry) | Phase 5 |
+| A-022 #1 | Hibernate marks tx rollback-only on 23P01 → write path off JPA | Already in plan (JdbcClient + whole-tx retry) | Phase 5 | <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 | A-022 #2 | Claim-first needs nullable response columns | Already in plan | Phase 2 |
 | A-023 Q1–Q7 | Retry order, claim-first + IN_FLIGHT test, candidate SQL, seed K, cancel order, YAGNI | Agreed, no change | — |
 | A-023 #1 | Startup partition window (rows land in DEFAULT before partitions exist) | Accepted: `SmartLifecycle` phase `Integer.MIN_VALUE`; rejected its `ContextRefreshedEvent` alternative (fires after server start) | Phase 7 |
-| A-023 #2 | Cancel loads a JPA entity then updates via JdbcClient | Accepted: `findForUpdate` via JdbcClient | Phase 6 |
+| A-023 #2 | Cancel loads a JPA entity then updates via JdbcClient | Accepted: `findForUpdate` via JdbcClient | Phase 6 | <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 | A-023 #3 | Jackson `adjust-dates-to-context-time-zone` | Rejected (deserialization-only); offset assertions in `AvailabilityApiIT` instead | Phase 4 |
 **Result:** A-024 `resolved` — plan agreed by both agents (2026-10-30).
 

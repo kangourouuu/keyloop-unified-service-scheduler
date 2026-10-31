@@ -18,7 +18,7 @@ import lombok.Setter;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-class ServiceTypeEntity {
+public class ServiceTypeEntity {
 
   @Id
   @Column(name = "code")

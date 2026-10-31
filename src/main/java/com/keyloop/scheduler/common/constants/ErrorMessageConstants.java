@@ -10,5 +10,9 @@ public final class ErrorMessageConstants {
   public static final String UNEXPECTED_ERROR =
       "Unexpected error. Quote the requestId when reporting.";
 
+  public static final String DEALERSHIP_NOT_FOUND = "Dealership not found.";
+  public static final String SERVICE_TYPE_NOT_FOUND = "Service type not found.";
+  public static final String DATE_OUT_OF_HORIZON = "Date is more than 90 days ahead.";
+
   private ErrorMessageConstants() {}
 }

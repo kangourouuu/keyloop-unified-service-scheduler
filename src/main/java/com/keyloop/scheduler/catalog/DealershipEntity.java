@@ -20,7 +20,7 @@ import lombok.Setter;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-class DealershipEntity {
+public class DealershipEntity {
 
   @Id
   @Column(name = "id")

@@ -225,6 +225,24 @@ public AppointmentDto book(BookAppointmentDto request, String idempotencyKey) {
 
 Enforced by Checkstyle `MethodLength` (`max = 20`) bound to `./mvnw verify`, which fails the build on violation. Test sources are excluded. The Checkstyle config itself is created in KUSS-04's skeleton phase.
 
+### Data access: JPA only
+
+- Spring Data repositories with JPQL `@Query`; `nativeQuery = true` only where JPQL can't express the statement. No `JdbcClient` in `src/main`.
+- Booking, idempotency claim, cancel (`@Lock(PESSIMISTIC_WRITE)`) and audit writes go through entities: `persist` + `flush` inside each per-attempt transaction. SQLState is read from the exception cause chain.
+- Partition DDL in `MaintenanceService` runs as `EntityManager` native queries; names come only from the date formatter or the regex.
+- Tests may keep raw JDBC connections for lock and race harnesses.
+
+```java
+public interface AppointmentRepository extends JpaRepository<AppointmentEntity, UUID> {
+
+  @Query("select count(a) > 0 from AppointmentEntity a where a.vehicleId = :vehicleId and a.status = AppointmentStatus.CONFIRMED and a.startTime < :end and a.endTime > :start")
+  boolean existsVehicleOverlap(...);
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  Optional<AppointmentEntity> findWithLockById(UUID id);
+}
+```
+
 ## 3. Comments: Javadoc only
 
 No inline comments in the codebase, main or test: no `//` and no `/* */`. A name that needs a comment to explain it gets renamed or extracted into a well-named method. Tests use descriptive `should_*` names instead of `// given / when / then` markers.
@@ -297,6 +315,7 @@ Each rule above that changed after the first version of this file keeps the agen
 - **Schema changes (§4).** Agent selection: Flyway migrations + `ddl-auto: validate`. **Developer decision (after review, 2026-10-31):** `validate` confirmed; every schema change via Flyway, `generate-ddl: false`, `clean-disabled: true`, never edit a committed migration, `request_audit` day partitions as the only runtime DDL — confirms + adds. **Reason:** one auditable schema history.
 - **Migration names (§4).** Agent selection: `V1__schema.sql`, `V2__seed.sql`. **Developer decision (after review, 2026-10-31):** `V<version>__<description>.sql`, sequential integer, verb-first lower snake_case — overrides. **Reason:** the file name says what the migration does.
 - **Constants (§1).** Agent selection: literals inline at each use, attribute keys inside `RequestAuditFilter`, SQL in repositories. **Developer decision (after review, 2026-10-31):** messages and shared names in `common.constants` `*Constants` classes; one-class literals stay private; SQL stays in repositories (confirms red-team #13) — overrides. **Reason:** one place per message and name, no drift between duplicates.
+- **Data access (§2).** Agent selection: JPA reads + JdbcClient writes (plan decision 1, A-024). **Developer decision (after review, 2026-10-31):** JPA only, incl. booking, idempotency, cancel, audit and partition DDL via native queries; tests may keep raw JDBC for lock/race harnesses — overrides. **Reason:** one data-access style; JPQL/@Query instead of hand-written JDBC.
 - **Formatting (§5).** Agent selection: none (Checkstyle `MethodLength` only). **Developer decision (after review, 2026-10-31):** Spotless with google-java-format, imports, sortPom, SQL, YAML, Markdown; `check` fails `./mvnw verify` — adds. **Reason:** one format, enforced by the build.
 - **Java style (§5).** Agent selection: AOSP style (4-space), chosen by the KUSS-04 implementer to match the doc examples. **Developer decision (after review, 2026-10-31):** default Google style, 2-space, with the examples converted — overrides. **Reason:** keep the formatter's standard style; docs follow the code.
 

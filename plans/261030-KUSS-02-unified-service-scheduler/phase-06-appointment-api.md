@@ -11,11 +11,12 @@
 
 ## Key Insights
 - Both write endpoints return `AppointmentResultDto` → controller does `ResponseEntity.status(result.httpStatus()).body(result.appointment())`; replay and fresh responses share one path.
-- Cancel races: lock the row (`JdbcClient` `SELECT … FOR UPDATE` in `AppointmentWriteRepository.findForUpdate`, returns `AppointmentDto`; no managed JPA entity on the mutating path, A-023 #2) before deciding → second canceller sees `CANCELLED` and returns current state; `UPDATE` always hits 1 row.
+- Cancel races: lock the row (`JdbcClient` `SELECT … FOR UPDATE` in `AppointmentWriteRepository.findForUpdate`, returns `AppointmentDto`; no managed JPA entity on the mutating path, A-023 #2) before deciding → second canceller sees `CANCELLED` and returns current state; `UPDATE` always hits 1 row. <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 - Check order in cancel: not found → 404; already `CANCELLED` → 200 current state (even if in the past); `startTime ≤ clock.instant()` → 409 `KUSS_APPOINTMENT_ALREADY_STARTED`; else cancel.
 - Constraint annotations on the `Idempotency-Key` param trigger Spring's built-in method validation → `HandlerMethodValidationException` (already mapped in phase 03).
 - Past appointments cannot be booked through the API → seed them via `insertAppointment` (JDBC) for the 409 cancel test.
 - HTTP tests prove the mapping (one case per status/code) plus the HTTP burst; booking semantics (in-flight harness, replay/mismatch variants) are proven once at service level in phase 05. <!-- Updated: Red Team #5 -->
+- **Developer decision (after review, 2026-10-31):** JdbcClient in this phase is replaced by JPA (Spring Data @Query / entity persist + flush; EntityManager native queries only for partition DDL) — overrides. Reason: one data-access style.
 
 ## Requirements
 | Endpoint | Success | Errors |
@@ -51,12 +52,12 @@ private AppointmentDto cancelIfConfirmed(AppointmentDto current) {
     if (!current.startTime().isAfter(now)) {
         throw new SchedulerException(ErrorCode.KUSS_APPOINTMENT_ALREADY_STARTED, ErrorMessageConstants.APPOINTMENT_ALREADY_STARTED);
     }
-    appointmentRepository.markCancelled(current.id(), now);   // JdbcClient UPDATE … WHERE id = :id AND status = 'CONFIRMED'
+    appointmentRepository.markCancelled(current.id(), now);   // JdbcClient UPDATE … WHERE id = :id AND status = 'CONFIRMED' <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
     return current.cancelled(now);
 }
 ```
 - `getAppointment(id)` and `listForDay(dealershipId, date)`: `@Transactional(readOnly = true)`; day bounds from `TimeSlotUtils.localDay(date, zone)`; dealership 404 first.
-- `AppointmentWriteRepository` adds `Optional<AppointmentDto> findForUpdate(UUID id)` (`JdbcClient`, `SELECT … FROM appointment WHERE id = :id FOR UPDATE`) <!-- Updated: Cross-review A-023 #2 -->; `AppointmentRepository` adds `findByDealershipIdAndStartTimeGreaterThanEqualAndStartTimeLessThanOrderByStartTime(...)` (read-only list).
+- `AppointmentWriteRepository` adds `Optional<AppointmentDto> findForUpdate(UUID id)` (`JdbcClient`, `SELECT … FROM appointment WHERE id = :id FOR UPDATE`) <!-- Updated: Cross-review A-023 #2 -->; `AppointmentRepository` adds `findByDealershipIdAndStartTimeGreaterThanEqualAndStartTimeLessThanOrderByStartTime(...)` (read-only list). <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 - Controller has no logic: validate → delegate → map result.
 
 ## Related Code Files
@@ -91,7 +92,7 @@ Modify:
 
 ## Todo List
 - [ ] `AppointmentApiIT` red (scenarios 1–5, 7, 8, 10, 11 + cancel/reads/OpenAPI)
-- [ ] `findForUpdate` (JdbcClient) + day query
+- [ ] `findForUpdate` (JdbcClient) + day query <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 - [ ] Service cancel/get/list
 - [ ] Controller with header + body validation
 - [ ] `@OpenAPIDefinition`

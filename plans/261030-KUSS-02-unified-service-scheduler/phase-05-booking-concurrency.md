@@ -17,11 +17,12 @@
 - Vehicle check runs before capacity: `EXISTS` vehicle-overlap precheck in `loadAndValidate` → `KUSS_VEHICLE_ALREADY_BOOKED` even when the slot is full (§12 #4); the vehicle EXCLUDE stays the race backstop. <!-- Updated: Red Team #8 -->
 - Every instant written (`created_at`, times echoed in responses) = `clock.instant().truncatedTo(ChronoUnit.MICROS)` → Postgres µs round-trip equals the fresh response (replay bodies identical). <!-- Updated: Red Team #11 -->
 - All SQL lives in `private static final String` text-block constants → every method stays ≤ 20 lines. <!-- Updated: Red Team #13 -->
-- Writes + candidate queries via `JdbcClient` (joins the JPA tx connection); exception exposes `PSQLException` with structured constraint name.
+- Writes + candidate queries via `JdbcClient` (joins the JPA tx connection); exception exposes `PSQLException` with structured constraint name. <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 - Claim-first idempotency: plain `INSERT` blocks on a concurrent uncommitted same-key claim; holder commits → 23505 (`DuplicateKeyException`) → 409 IN_FLIGHT; holder rolls back → our insert succeeds. **No `SET LOCAL lock_timeout`** (would also cap EXCLUDE waits and mislabel them).
 - Hash over canonical fields, not raw body → whitespace/field-order/offset-equivalent requests replay instead of 422.
 - Bind `Instant` as `OffsetDateTime` (`atOffset(UTC)`) — pgjdbc `Instant` binding not guaranteed.
 - `SqlErrorUtils` needs `org.postgresql.util.PSQLException` at compile time → `postgresql` is compile scope (set in phase 01).
+- **Developer decision (after review, 2026-10-31):** JdbcClient in this phase is replaced by JPA (Spring Data @Query / entity persist + flush; EntityManager native queries only for partition DDL) — overrides. Reason: one data-access style.
 
 ## Requirements
 - `book(BookAppointmentDto, idempotencyKey)` → `AppointmentResultDto(httpStatus, AppointmentDto)`; 201 fresh, stored status on replay.
@@ -56,7 +57,7 @@ private AppointmentResultDto bookOnce(BookAppointmentDto request, String idempot
     BookingContext context = loadAndValidate(request);          // 404 / 400 / 409 VEHICLE (EXISTS precheck)
     CandidateDto candidate = pickCandidate(context);             // 409 NO_CAPACITY when a list is empty
     AppointmentDto appointment = appointmentMapper.confirmed(context, candidate, clock.instant().truncatedTo(ChronoUnit.MICROS));
-    appointmentRepository.insert(appointment);                   // JdbcClient; may throw 23P01
+    appointmentRepository.insert(appointment);                   // JdbcClient; may throw 23P01 <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
     AppointmentResultDto result = AppointmentResultDto.builder().status(201).appointment(appointment).build();
     idempotencyService.complete(idempotencyKey, result);
     return result;
@@ -130,7 +131,7 @@ Modify: `{root}/src/main/java/com/keyloop/scheduler/appointment/AppointmentRepos
 - [ ] `CandidateSelectionTest` red → green
 - [ ] `BookingConcurrencyIT`, `VehicleOverlapIT`, `IdempotencyIT` red
 - [ ] DTOs, `SqlErrorUtils`, `CandidateSelectionUtils`
-- [ ] `AppointmentWriteRepository` fragment (JdbcClient, OffsetDateTime binds, SQL constants, vehicle precheck)
+- [ ] `AppointmentWriteRepository` fragment (JdbcClient, OffsetDateTime binds, SQL constants, vehicle precheck) <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 - [ ] `IdempotencyService`/`Impl` (MANDATORY, `findExisting` / `insertClaim`)
 - [ ] `AppointmentService`/`Impl.book` whole-tx retry + retry counter
 - [ ] `./mvnw verify` green, concurrency IT 5× stable

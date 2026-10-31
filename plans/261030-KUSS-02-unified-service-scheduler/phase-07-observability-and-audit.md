@@ -20,6 +20,7 @@
 - `service_type` tag must stay bounded without a lookup: request code only for outcomes reached after validation (`confirmed`, `KUSS_NO_CAPACITY`, `KUSS_VEHICLE_ALREADY_BOOKED`, `KUSS_IDEMPOTENCY_IN_FLIGHT`, `KUSS_IDEMPOTENCY_KEY_MISMATCH`), else `unknown`. <!-- Updated: Red Team #13 -->
 - Audit scope matched on `request.getServletPath()` (decoded + normalized by the container), never raw `getRequestURI()` (encoded / `;matrix` variants would slip past a prefix check). <!-- Updated: Red Team #10 -->
 - All meters pre-registered at startup (every tag value) → tests read sums, never hit a missing meter. <!-- Updated: Red Team #11 -->
+- **Developer decision (after review, 2026-10-31):** JdbcClient in this phase is replaced by JPA (Spring Data @Query / entity persist + flush; EntityManager native queries only for partition DDL) — overrides. Reason: one data-access style.
 
 ## Requirements
 - Audit row per audited request: `id`, `occurred_at` (`clock.instant().truncatedTo(MICROS)`), `request_id`, method (truncated to 10), path (servlet path, truncated to 255), status, `error_code` (request attribute `kuss_error_code`, null on 2xx), `duration_ms`, payload only for `POST /api/v1/appointments` (sanitized to `dealershipId, vehicleId, serviceTypeCode, desiredStartTime`; unparsable → null), null otherwise.
@@ -49,7 +50,7 @@ protected void doFilterInternal(HttpServletRequest request, HttpServletResponse 
 }
 ```
 ```sql
--- RequestAuditServiceImpl.write (@Transactional(propagation = REQUIRES_NEW), JdbcClient)
+-- RequestAuditServiceImpl.write (@Transactional(propagation = REQUIRES_NEW), JdbcClient) <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 INSERT INTO request_audit (id, occurred_at, request_id, http_method, path, http_status, error_code, duration_ms, request_payload)
 VALUES (:id, :occurredAt, :requestId, :httpMethod, :path, :httpStatus, :errorCode, :durationMs, CAST(:payload AS jsonb))
 -- MaintenanceServiceImpl

@@ -16,6 +16,7 @@
 - `ddl-auto: validate` → use `varchar` (not `char`) for entity-mapped columns, else Hibernate rejects `bpchar`.
 - Hibernate default names do not match the schema (e.g. `@ElementCollection` join column defaults to `technician_entity_id`) → every `*Entity` mapping names its table/column explicitly. <!-- Updated: Red Team #2 -->
 - Seed shapes the concurrency tests: London OIL_CHANGE = 3 active bays vs 4 techs (bay-bound, K=3); BRAKE_REPAIR = 3 bays vs 2 techs (tech-bound, K=2).
+- **Developer decision (after review, 2026-10-31):** JdbcClient in this phase is replaced by JPA (Spring Data @Query / entity persist + flush; EntityManager native queries only for partition DDL) — overrides. Reason: one data-access style.
 
 ## Requirements
 - Functional: schema per draft §6 + idempotency + partitioned audit; seed ≥2 dealerships in different non-UTC zones, bays (incl. one inactive), techs with distinct skills, service types 30/60/90/120, 3 customers, 24 vehicles; fixed UUIDs.
@@ -93,11 +94,11 @@ SELECT ('00000000-0000-0000-0005-' || lpad(n::text, 12, '0'))::uuid,
 FROM generate_series(1, 24) AS n;
 ```
 
-Entities (field access, protected no-arg ctor, getters only — writes go through `JdbcClient`):
+Entities (field access, protected no-arg ctor, getters only — writes go through `JdbcClient`): <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 - `DealershipEntity` (`dealership`), `ServiceTypeEntity` (`service_type`, `@Id String code`), `ServiceBayEntity`, `TechnicianEntity` (+ `@ElementCollection @CollectionTable(name = "technician_skill", joinColumns = @JoinColumn(name = "technician_id")) @Column(name = "service_type_code") Set<String> skillCodes`, lazy), `CustomerEntity`, `VehicleEntity` (plain `UUID customerId`, no associations), `AppointmentEntity` (plain UUID FK columns, `@Enumerated(STRING) AppointmentStatus status`, `Instant` times).
 - Every entity: `@Table(name = "…")` and `@Column(name = "snake_case")` on every field (no reliance on the naming strategy).
 - Every entity: Lombok `@Getter @Setter @Builder @NoArgsConstructor(access = PROTECTED) @AllArgsConstructor(access = PRIVATE)`; never `@Data`, `@EqualsAndHashCode` or `@ToString` (`docs/code-standards.md`). <!-- Updated: conventions 2026-10-31 -->
-- No entity for `idempotency_key` / `request_audit`: only `JdbcClient` touches them (YAGNI).
+- No entity for `idempotency_key` / `request_audit`: only `JdbcClient` touches them (YAGNI). <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 
 ## Related Code Files
 `{root}` = `/Users/kangourouuu/orca/workspaces/keyloop-unified-service-scheduler/tilefish`. Create:
@@ -111,7 +112,7 @@ Modify:
 - `{root}/src/test/java/com/keyloop/scheduler/IntegrationTestSupport.java`: `@BeforeEach` in one `TransactionTemplate` tx: `SET LOCAL lock_timeout = '5s'` then `TRUNCATE appointment, idempotency_key` (a leaked lock fails the test instead of hanging the suite, Red Team #3); helper `insertAppointment(bayId, techId, vehicleId, start, end, status)` (`INSERT … SELECT … FROM vehicle` to derive customer, London dealership by default).
 
 ## Implementation Steps
-1. Tests first (red): `SchemaConstraintsIT` via `JdbcClient`, constraint name read from `PSQLException#getServerErrorMessage().getConstraint()` (test-local cause-chain helper). Behaviour cases only; Postgres built-ins (NOT NULL, CHECK) are not re-tested <!-- Updated: Red Team #7, #11, #13 -->:
+1. Tests first (red): `SchemaConstraintsIT` via `JdbcClient`, constraint name read from `PSQLException#getServerErrorMessage().getConstraint()` (test-local cause-chain helper). Behaviour cases only; Postgres built-ins (NOT NULL, CHECK) are not re-tested <!-- Updated: Red Team #7, #11, #13 -->: <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
    - overlapping bay → `excl_appointment_bay_overlap`; tech → `excl_appointment_tech_overlap`; vehicle → `excl_appointment_vehicle_overlap`
    - back-to-back 09:00–10:00 + 10:00–11:00 on same bay/tech/vehicle → both inserted
    - first row set `CANCELLED` (+ `cancelled_at`) → overlapping CONFIRMED insert succeeds

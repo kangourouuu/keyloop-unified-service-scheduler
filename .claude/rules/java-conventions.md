@@ -30,6 +30,7 @@ Full rules with examples: `docs/code-standards.md`. These project conventions ov
 - [ ] Build own domain types (entities, DTOs, value objects) with `X.builder()...build()`, never `new X(params)`. JDK/framework types (`new ArrayList<>()`, `new HashSet<>()`, `ProblemDetail`) and exceptions keep `new`
 - [ ] Lookups and uniqueness → `Set` / `HashMap`, not `List` scans or index loops
 - [ ] Each method ≤ 20 lines; split into smaller methods for testability. Enforced by Checkstyle `MethodLength` (max 20, main sources only) failing `./mvnw verify`. The Checkstyle config is created in KUSS-04's skeleton phase.
+- [ ] Data access is JPA only: Spring Data repositories + JPQL `@Query` (native only where JPQL can't); no JdbcClient in `src/main`
 
 ## Comments
 
