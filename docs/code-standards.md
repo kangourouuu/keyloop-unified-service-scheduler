@@ -124,6 +124,25 @@ public final class ErrorMessageConstants {
 - A literal used in one class only stays `private static final` in that class.
 - SQL stays as `private static final` text blocks in its repository, next to the method that runs it.
 
+### Package layout: one subpackage per role
+
+Each domain (`appointment`, `availability`, `catalog`, `audit`) is one package with the same subpackages. A class lives in the subpackage that matches its suffix from the table above. Shared code (`constants`, `error`, `util`, `web`) stays in `common`.
+
+```
+com.keyloop.scheduler.appointment
+├── controller   AppointmentController
+├── service      AppointmentService (interface)
+│   └── impl     AppointmentServiceImpl
+├── repository   AppointmentRepository, AppointmentWriteRepository
+├── entity       AppointmentEntity, AppointmentStatus
+├── dto          AppointmentDto, BookAppointmentDto, ...
+├── mapper       AppointmentMapper
+├── config       (configuration classes)
+└── util         CandidateSelectionUtils
+```
+
+A class used from another package is `public`, so package-private classes stay inside their subpackage.
+
 ### Test vs IT
 
 - `AvailabilitySweepTest`: plain unit test, no Spring context, no Docker. Run by Surefire in `./mvnw test`.
@@ -314,6 +333,7 @@ Each rule above that changed after the first version of this file keeps the agen
 - **Mapping (§1).** Agent selection: "Put mapping in the record (`from(...)` / `toEntity()`), not in a separate mapper class." **Developer decision (after review, 2026-10-31):** MapStruct `*Mapper` interfaces own every Entity ↔ Dto mapping — overrides. **Reason:** DTOs stay pure data; mapping lives in one generated, testable place.
 - **Schema changes (§4).** Agent selection: Flyway migrations + `ddl-auto: validate`. **Developer decision (after review, 2026-10-31):** `validate` confirmed; every schema change via Flyway, `generate-ddl: false`, `clean-disabled: true`, never edit a committed migration, `request_audit` day partitions as the only runtime DDL — confirms + adds. **Reason:** one auditable schema history.
 - **Migration names (§4).** Agent selection: `V1__schema.sql`, `V2__seed.sql`. **Developer decision (after review, 2026-10-31):** `V<version>__<description>.sql`, sequential integer, verb-first lower snake_case — overrides. **Reason:** the file name says what the migration does.
+- **Package layout (§1).** Layout by role: `<domain>/{controller, service, service/impl, repository, entity, dto, mapper, config, util}`. **Developer decision (relayed by orchestrator, 2026-10-31):** adopted; existing files moved in one commit. **Reason:** a reader finds a class by its role, not by scanning one flat package.
 - **Constants (§1).** Agent selection: literals inline at each use, attribute keys inside `RequestAuditFilter`, SQL in repositories. **Developer decision (after review, 2026-10-31):** messages and shared names in `common.constants` `*Constants` classes; one-class literals stay private; SQL stays in repositories (confirms red-team #13) — overrides. **Reason:** one place per message and name, no drift between duplicates.
 - **Data access (§2).** Agent selection: JPA reads + JdbcClient writes (plan decision 1, A-024). **Developer decision (after review, 2026-10-31):** JPA only, incl. booking, idempotency, cancel, audit and partition DDL via native queries; tests may keep raw JDBC for lock/race harnesses — overrides. **Reason:** one data-access style; JPQL/@Query instead of hand-written JDBC.
 - **Formatting (§5).** Agent selection: none (Checkstyle `MethodLength` only). **Developer decision (after review, 2026-10-31):** Spotless with google-java-format, imports, sortPom, SQL, YAML, Markdown; `check` fails `./mvnw verify` — adds. **Reason:** one format, enforced by the build.

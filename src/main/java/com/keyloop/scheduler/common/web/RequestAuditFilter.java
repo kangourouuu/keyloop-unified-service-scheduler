@@ -1,7 +1,7 @@
 package com.keyloop.scheduler.common.web;
 
-import com.keyloop.scheduler.audit.RequestAuditDto;
-import com.keyloop.scheduler.audit.RequestAuditService;
+import com.keyloop.scheduler.audit.dto.RequestAuditDto;
+import com.keyloop.scheduler.audit.service.RequestAuditService;
 import com.keyloop.scheduler.common.constants.HeaderConstants;
 import com.keyloop.scheduler.common.constants.RequestConstants;
 import jakarta.servlet.FilterChain;

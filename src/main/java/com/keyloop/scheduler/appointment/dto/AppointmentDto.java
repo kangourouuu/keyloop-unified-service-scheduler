@@ -1,6 +1,6 @@
 package com.keyloop.scheduler.appointment.dto;
 
-import com.keyloop.scheduler.appointment.AppointmentStatus;
+import com.keyloop.scheduler.appointment.entity.AppointmentStatus;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.Builder;

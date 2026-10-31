@@ -1,6 +1,6 @@
 package com.keyloop.scheduler.appointment.repository;
 
-import com.keyloop.scheduler.appointment.AppointmentEntity;
+import com.keyloop.scheduler.appointment.entity.AppointmentEntity;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Repository;

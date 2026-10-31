@@ -1,24 +1,24 @@
 package com.keyloop.scheduler.appointment.service.impl;
 
-import com.keyloop.scheduler.appointment.AppointmentEntity;
-import com.keyloop.scheduler.appointment.AppointmentRepository;
-import com.keyloop.scheduler.appointment.AppointmentStatus;
 import com.keyloop.scheduler.appointment.dto.AppointmentDto;
 import com.keyloop.scheduler.appointment.dto.AppointmentResultDto;
 import com.keyloop.scheduler.appointment.dto.BookAppointmentDto;
 import com.keyloop.scheduler.appointment.dto.CandidateDto;
 import com.keyloop.scheduler.appointment.dto.TechnicianLoadDto;
+import com.keyloop.scheduler.appointment.entity.AppointmentEntity;
+import com.keyloop.scheduler.appointment.entity.AppointmentStatus;
 import com.keyloop.scheduler.appointment.mapper.AppointmentMapper;
+import com.keyloop.scheduler.appointment.repository.AppointmentRepository;
 import com.keyloop.scheduler.appointment.repository.AppointmentWriteRepository;
 import com.keyloop.scheduler.appointment.service.AppointmentService;
 import com.keyloop.scheduler.appointment.service.IdempotencyService;
 import com.keyloop.scheduler.appointment.util.CandidateSelectionUtils;
-import com.keyloop.scheduler.catalog.DealershipEntity;
-import com.keyloop.scheduler.catalog.DealershipRepository;
-import com.keyloop.scheduler.catalog.ServiceTypeEntity;
-import com.keyloop.scheduler.catalog.ServiceTypeRepository;
-import com.keyloop.scheduler.catalog.VehicleEntity;
-import com.keyloop.scheduler.catalog.VehicleRepository;
+import com.keyloop.scheduler.catalog.entity.DealershipEntity;
+import com.keyloop.scheduler.catalog.entity.ServiceTypeEntity;
+import com.keyloop.scheduler.catalog.entity.VehicleEntity;
+import com.keyloop.scheduler.catalog.repository.DealershipRepository;
+import com.keyloop.scheduler.catalog.repository.ServiceTypeRepository;
+import com.keyloop.scheduler.catalog.repository.VehicleRepository;
 import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
 import com.keyloop.scheduler.common.constants.MetricConstants;
 import com.keyloop.scheduler.common.error.ErrorCode;
@@ -27,6 +27,7 @@ import com.keyloop.scheduler.common.util.SqlErrorUtils;
 import com.keyloop.scheduler.common.util.TimeSlotUtils;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -66,6 +67,23 @@ class AppointmentServiceImpl implements AppointmentService {
   private static final String CONFLICT_DEADLOCK = "deadlock";
   private static final String DEADLOCK_STATE = "40P01";
   private static final Set<String> RETRYABLE_STATES = Set.of("23P01", DEADLOCK_STATE);
+  private static final String CONFIRMED_RESULT = "confirmed";
+  private static final String UNKNOWN_SERVICE_TYPE = "unknown";
+  private static final Set<String> BOOKING_RESULTS =
+      Set.of(
+          CONFIRMED_RESULT,
+          ErrorCode.KUSS_VALIDATION_FAILED.name(),
+          ErrorCode.KUSS_RESOURCE_NOT_FOUND.name(),
+          ErrorCode.KUSS_INTERNAL_ERROR.name(),
+          ErrorCode.KUSS_NO_CAPACITY.name(),
+          ErrorCode.KUSS_VEHICLE_ALREADY_BOOKED.name(),
+          ErrorCode.KUSS_IDEMPOTENCY_IN_FLIGHT.name(),
+          ErrorCode.KUSS_IDEMPOTENCY_KEY_MISMATCH.name());
+  private static final Set<String> TRACKED_SERVICE_TYPE_RESULTS =
+      Set.of(
+          CONFIRMED_RESULT,
+          ErrorCode.KUSS_NO_CAPACITY.name(),
+          ErrorCode.KUSS_VEHICLE_ALREADY_BOOKED.name());
 
   private final Clock clock;
   private final DealershipRepository dealershipRepository;
@@ -77,6 +95,7 @@ class AppointmentServiceImpl implements AppointmentService {
   private final IdempotencyService idempotencyService;
   private final TransactionTemplate transactionTemplate;
   private final Map<String, Counter> retryCounters;
+  private final MeterRegistry meterRegistry;
 
   AppointmentServiceImpl(
       Clock clock,
@@ -100,6 +119,7 @@ class AppointmentServiceImpl implements AppointmentService {
     this.transactionTemplate = new TransactionTemplate(transactionManager);
     this.transactionTemplate.setTimeout(TRANSACTION_TIMEOUT_SECONDS);
     this.retryCounters = registerRetryCounters(meterRegistry);
+    this.meterRegistry = meterRegistry;
   }
 
   private static Map<String, Counter> registerRetryCounters(MeterRegistry meterRegistry) {
@@ -122,6 +142,51 @@ class AppointmentServiceImpl implements AppointmentService {
    */
   @Override
   public AppointmentResultDto book(BookAppointmentDto request, String idempotencyKey) {
+    String result = ErrorCode.KUSS_INTERNAL_ERROR.name();
+    try {
+      AppointmentResultDto booked = bookWithRetry(request, idempotencyKey);
+      result = CONFIRMED_RESULT;
+      return booked;
+    } catch (SchedulerException ex) {
+      result = ex.getCode().name();
+      throw ex;
+    } finally {
+      recordBooking(request, result);
+    }
+  }
+
+  private void recordBooking(BookAppointmentDto request, String result) {
+    String serviceType =
+        TRACKED_SERVICE_TYPE_RESULTS.contains(result)
+            ? request.serviceTypeCode()
+            : UNKNOWN_SERVICE_TYPE;
+    bookingCounter(serviceType, result).increment();
+  }
+
+  @PostConstruct
+  void registerBookingMeters() {
+    List<String> serviceTypeCodes =
+        serviceTypeRepository.findByActiveTrueOrderByCode().stream()
+            .map(ServiceTypeEntity::getCode)
+            .toList();
+    BOOKING_RESULTS.forEach(result -> {
+      bookingCounter(UNKNOWN_SERVICE_TYPE, result);
+      if (TRACKED_SERVICE_TYPE_RESULTS.contains(result)) {
+        serviceTypeCodes.forEach(code -> bookingCounter(code, result));
+      }
+    });
+  }
+
+  private Counter bookingCounter(String serviceType, String result) {
+    return meterRegistry.counter(
+        MetricConstants.BOOKING_REQUESTS,
+        MetricConstants.TAG_SERVICE_TYPE,
+        serviceType,
+        MetricConstants.TAG_RESULT,
+        result);
+  }
+
+  private AppointmentResultDto bookWithRetry(BookAppointmentDto request, String idempotencyKey) {
     for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
         return transactionTemplate.execute(status -> bookOnce(request, idempotencyKey));

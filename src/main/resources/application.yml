@@ -18,6 +18,18 @@ spring:
     clean-disabled: true
     validate-on-migrate: true
     baseline-on-migrate: false
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,prometheus"
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: "readinessState,db"
 ---
 spring:
   config:

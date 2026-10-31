@@ -1,8 +1,8 @@
 package com.keyloop.scheduler.appointment.util;
 
-import com.keyloop.scheduler.appointment.AppointmentEntity;
 import com.keyloop.scheduler.appointment.dto.CandidateDto;
 import com.keyloop.scheduler.appointment.dto.TechnicianLoadDto;
+import com.keyloop.scheduler.appointment.entity.AppointmentEntity;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
