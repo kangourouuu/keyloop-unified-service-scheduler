@@ -27,7 +27,7 @@
 - Readability over strict style; match surrounding code.
 - Validate input at API boundaries; handle errors that could lose data.
 - Keep files focused and small (~200 lines); split by responsibility, not by layer ceremony.
-- Comments only where intent is not obvious from naming (and `ponytail:` markers for deliberate shortcuts).
+- No inline comments (`//`, `/* */`) in Java code, main or test. Only descriptive Javadoc, required on core business methods. No `ponytail:` marker comments; record deliberate shortcuts in the plan or docs instead (`docs/code-standards.md` §3).
 - Java conventions: `docs/code-standards.md` (agent checklist: `.claude/rules/java-conventions.md`).
 - Use the `code-reviewer` agent after every implementation.
 

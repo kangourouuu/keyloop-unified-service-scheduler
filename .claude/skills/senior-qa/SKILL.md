@@ -34,6 +34,7 @@ One row → one test method. End with: tests expected to fail until implemented,
 | `*IT` | SQL, constraints, transactions, HTTP status + `ProblemDetail`, idempotency, audit | Failsafe, `./mvnw verify`, Spring context + Testcontainers Postgres |
 
 - JUnit 5 + AssertJ (from `spring-boot-starter-test`); `@DisplayName("TC-01 ...")` links code to the list
+- Test methods are snake_case with prefix `should_` (`should_return_409_when_vehicle_already_booked`); no inline comments, no `// given/when/then` (`docs/code-standards.md` §3)
 - Real Postgres via Testcontainers. No H2 (no `EXCLUDE`/gist), no mocked repositories or JDBC to fake a constraint or `23P01`
 - Each test seeds its own dealership/bays/technicians/vehicles; never rely on Flyway seed rows that other tests mutate or on test order
 - Dates relative to now in the dealership zone (`LocalDate.now(zone).plusDays(n)`), never a hard-coded calendar date

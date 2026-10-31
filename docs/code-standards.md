@@ -2,7 +2,7 @@
 
 Java 21 + Spring Boot 4 conventions for the Unified Service Scheduler. Agents load the short checklist in `.claude/rules/java-conventions.md`; this file is the human-readable version with examples.
 
-These conventions override ponytail's "no interface with a single implementation" rule for `*Service` / `*ServiceImpl`. Ponytail (minimal code, no speculative abstraction) still applies everywhere else.
+These conventions override ponytail's "no interface with a single implementation" rule for `*Service` / `*ServiceImpl`, and its `ponytail:` marker comments (see §3). Ponytail (minimal code, no speculative abstraction) still applies everywhere else.
 
 ## 1. Naming: class suffix → role
 
@@ -96,6 +96,16 @@ final class TimeSlotUtils {
 - `AvailabilitySweepTest`: plain unit test, no Spring context, no Docker. Run by Surefire in `./mvnw test`.
 - `AppointmentBookingIT`: Spring context + Testcontainers Postgres. Run by Failsafe in `./mvnw verify`.
 
+Test methods are snake_case with the prefix `should_`, so the name states the expected behaviour:
+
+```java
+@Test
+void should_return_409_when_vehicle_already_booked() { ... }
+
+@Test
+void should_book_exactly_k_appointments_when_n_requests_race_for_k_pairs() { ... }
+```
+
 ## 2. Coding rules
 
 ### Variables are camelCase
@@ -166,3 +176,27 @@ public AppointmentDto book(BookAppointmentDto request, String idempotencyKey) {
 ```
 
 Enforced by Checkstyle `MethodLength` (`max = 20`) bound to `./mvnw verify`, which fails the build on violation. Test sources are excluded. The Checkstyle config itself is created in KUSS-04's skeleton phase.
+
+## 3. Comments: Javadoc only
+
+No inline comments in the codebase, main or test: no `//` and no `/* */`. A name that needs a comment to explain it gets renamed or extracted into a well-named method. Tests use descriptive `should_*` names instead of `// given / when / then` markers.
+
+The only comments are descriptive Javadoc (`/** */`), and they are required on core business methods: booking, availability, cancellation, idempotency and audit. Javadoc says what the method guarantees and why, not how it does it line by line. Skip it on getters, DTO records, controllers that only delegate, and obvious one-liners.
+
+```java
+/**
+ * Books the first free bay + qualified technician pair for the whole service duration.
+ * Retries with the next free pair when a concurrent booking takes the chosen one, and
+ * replays the stored response when the same Idempotency-Key is sent again.
+ *
+ * @throws SchedulerException KUSS_VEHICLE_ALREADY_BOOKED or KUSS_NO_CAPACITY
+ */
+AppointmentDto book(BookAppointmentDto request, String idempotencyKey);
+```
+
+```java
+// not: int attempts = 0; // retry counter
+// not: // ponytail: safety cap, raise if needed
+```
+
+No `ponytail:` marker comments: deliberate shortcuts and their ceilings go in the plan or `docs/system-design.md`. This rule is checked in code review, not by Checkstyle.

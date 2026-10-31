@@ -4,7 +4,7 @@ paths: ["**/*.java"]
 
 # Java Conventions (checklist)
 
-Full rules with examples: `docs/code-standards.md`. These project conventions override ponytail's "no interface with a single implementation" rule for `*Service` / `*ServiceImpl` only; ponytail still applies everywhere else.
+Full rules with examples: `docs/code-standards.md`. These project conventions override ponytail's "no interface with a single implementation" rule for `*Service` / `*ServiceImpl` only; They also override ponytail's `ponytail:` marker comments: never write them, and record deliberate shortcuts in the plan or docs. Ponytail still applies everywhere else.
 
 ## Class suffix → role
 
@@ -16,6 +16,7 @@ Full rules with examples: `docs/code-standards.md`. These project conventions ov
 - `*GlobalHandler` — the single `@RestControllerAdvice` exception handler
 - `*Utils` — static helpers only (final class, private constructor)
 - `*Test` — unit test (Surefire); `*IT` — integration test with Testcontainers (Failsafe)
+- Test methods: snake_case with prefix `should_` (`should_return_409_when_vehicle_already_booked`)
 
 ## Coding
 
@@ -26,3 +27,10 @@ Full rules with examples: `docs/code-standards.md`. These project conventions ov
 - [ ] Stream API for collection transforms
 - [ ] Lookups and uniqueness → `Set` / `HashMap`, not `List` scans or index loops
 - [ ] Each method ≤ 20 lines; split into smaller methods for testability. Enforced by Checkstyle `MethodLength` (max 20, main sources only) failing `./mvnw verify`. The Checkstyle config is created in KUSS-04's skeleton phase.
+
+## Comments
+
+- [ ] No inline comments (`//`, `/* */`) anywhere in main or test code. Use descriptive names instead; tests carry no `// given/when/then` markers
+- [ ] Javadoc (`/** */`) only, and required on core business methods: booking, availability, cancellation, idempotency, audit. Describe what the method guarantees and why, not how
+- [ ] No `ponytail:` marker comments; record deliberate shortcuts and their ceilings in the plan or docs
+- [ ] Checked in code review (not by Checkstyle)
