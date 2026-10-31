@@ -490,6 +490,8 @@ While V1 stays intentionally lean for reliability and clarity, the architecture 
 | **Richer Workshop Constraints** | EV high-voltage bays, heavy-truck lifts, technician shift calendars & breaks | Add `bay_capability` join table (mirroring `technician_skill`) and `technician_unavailability` / `shift` intervals using the exact same `[start, end)` range model. |
 | **Client Authentication or Partner Integrations** | Request tampering, non-repudiation, and replay attacks across public or partner networks without mutual TLS | Introduce **Keyed Request Signing** (HMAC-SHA256 over method + path + timestamp + SHA-256(body) with per-client secret, or RFC 9421 HTTP Message Signatures) enforced with timestamp-window replay protection (e.g. 5-minute validity). |
 
+- Lock ordering before insert (pessimistic locks on the chosen bay, then technician, always in that order) to remove exclusion-index deadlocks under heavy bursts. Developer decision (after review, 2026-10-31): roadmap for scaling only; V1 keeps EXCLUDE + retry; trigger = scheduler.booking.gist_retries{conflict_type=deadlock} climbing under real load — adds. Reason: V1 correctness is guaranteed by the constraints; whole-resource locks would serialize unrelated time ranges.
+
 ---
 
 ## 11. Documented Assumptions & Ambiguity Log

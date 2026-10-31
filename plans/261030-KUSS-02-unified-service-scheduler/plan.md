@@ -37,6 +37,7 @@ Order is strict (each phase builds on the previous). Exit gate per phase: `./mvn
 - Git: local `[KUSS-04]` commits per phase on `feature/KUSS-04-unified-service-scheduler`. **No push** to `origin` (github.com/kangourouuu/keyloop-unified-service-scheduler) until the user approves after the cross-review. PR body: `Closes #4` (issues #1–#6 = KUSS-01..06).
 
 - Agent selection: "Order is strict". **Developer decision (after review, 2026-10-31):** phase 07 splits into 7a (async audit + partition/idempotency maintenance, built in parallel by another Haiku worker in its own worktree after P2+P3) and 7b (metrics, probes, logging: the main implementer after P6). The orchestrator cherry-picks 7a onto this branch — overrides. **Reason:** 7a has no code dependency on P4-P6. (The P3 parallel run was superseded because you built P3 first.)
+- Agent selection (KUSS-04 implementer, d536d09): bay -> technician PESSIMISTIC_WRITE locks before insert, to stop a 40P01 storm. Developer decision (after review, 2026-10-31): reverted; Approach A, EXCLUDE + retry only, is the V1 decision. Lock ordering is a ROADMAP item for scaling, triggered when scheduler.booking.gist_retries{conflict_type=deadlock} climbs under real load — overrides the implementer deviation. Fix applied: PostgreSQL breaks one exclusion-index wait cycle per deadlock_timeout while each victim retried at once and re-inserted a conflicting index entry, so 17-18 inserters stayed blocked in a livelock; a 40P01 victim now backs off for a randomized wait that starts at deadlock_timeout and doubles up to 3.2-6.4 s before retrying, so victims return slower than PostgreSQL breaks cycles.
 
 ### Cut list (if over budget, cut in this order)
 1. Second compose smoke run with prod logs (phase 07 step 5) → keep the curl checks only.
@@ -111,6 +112,7 @@ Also: draft §7.2 "rollback sub-tx" and "insert key last" superseded by rows #1/
 - Auth, request signing, Redis, RabbitMQ, WebSocket, admin CRUD, shifts/breaks, pagination. `GET /customers` is unbounded and public: paginate and scope by auth once customers are real data.
 - `MAX_ATTEMPTS` booking retry cap: only trips on a bug where the candidate query and the constraint predicate disagree; the loop normally ends when candidates run out.
 - Rate limiting: none in V1, so anyone can read and cancel everything; the 90-day horizon only bounds how far ahead capacity can be held (Red Team #14).
+- Lock ordering before insert: roadmap for scaling (trigger: deadlock retry metric), not V1.
 
 ## Dependencies / risks
 - Local machine runs **Podman** (no Docker CLI, no JDK). The orchestrator provisions JDK 21 (Homebrew), starts `podman-machine-default` and exports the Testcontainers env (`DOCKER_HOST`, `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE`, Ryuk) before `/implement`; phase 01 step 0 verifies. Images are fully qualified; `podman compose` and `docker compose` are both supported. Wrapper comes from start.spring.io (no global Maven). <!-- Updated: Validation Session 1 -->

@@ -49,6 +49,13 @@ public final class TimeSlotUtils {
     return !date.isAfter(LocalDate.ofInstant(now, zone).plusDays(MAX_DAYS_AHEAD));
   }
 
+  public static Window localDay(LocalDate date, ZoneId zone) {
+    return Window.builder()
+        .start(date.atStartOfDay(zone).toInstant())
+        .end(date.plusDays(1).atStartOfDay(zone).toInstant())
+        .build();
+  }
+
   public static Window openWindow(LocalDate date, ZoneId zone, LocalTime open, LocalTime close) {
     return Window.builder()
         .start(date.atTime(open).atZone(zone).toInstant())

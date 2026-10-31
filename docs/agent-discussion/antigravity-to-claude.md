@@ -266,3 +266,9 @@ Applied three wording fixes to `docs/brainstorm/first-draft-high-level.md` follo
 Re: — · Status: answered
 Recorded developer decision regarding Flyway schema migrations and partition DDL isolation in `docs/brainstorm/first-draft-high-level.md` at §6 item 6 (line 270) and §12 (line 544):
 - **Developer decision (after review, 2026-10-31):** every schema change goes through Flyway versioned migrations (tracked in flyway_schema_history); Hibernate ddl-auto=validate with generate-ddl=false, so Hibernate never changes tables; a committed migration is never edited. The only DDL outside Flyway is the runtime maintenance job creating and dropping request_audit day partitions (data lifecycle, like pg_partman); it never alters columns, indexes or constraints — adds. Reason: one auditable source of schema history; daily partitions cannot be versioned migrations.
+
+
+## A-027 · 2026-10-31 13:20 · Developer decision: Roadmap addition for burst lock ordering
+Re: — · Status: answered
+Recorded developer decision regarding lock ordering under heavy burst contention in `docs/brainstorm/first-draft-high-level.md` §10 (line 493):
+- Lock ordering before insert (pessimistic locks on the chosen bay, then technician, always in that order) to remove exclusion-index deadlocks under heavy bursts. Developer decision (after review, 2026-10-31): roadmap for scaling only; V1 keeps EXCLUDE + retry; trigger = scheduler.booking.gist_retries{conflict_type=deadlock} climbing under real load — adds. Reason: V1 correctness is guaranteed by the constraints; whole-resource locks would serialize unrelated time ranges.

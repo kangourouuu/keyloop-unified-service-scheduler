@@ -1,6 +1,6 @@
 package com.keyloop.scheduler.appointment;
 
-enum AppointmentStatus {
+public enum AppointmentStatus {
   CONFIRMED,
   CANCELLED
 }
