@@ -44,7 +44,6 @@ public AppointmentResultDto book(BookAppointmentDto request, String idempotencyK
             throw new SchedulerException(ErrorCode.KUSS_INTERNAL_ERROR, "Booking could not be completed.");
         }
     }
-    // ponytail: cap only trips on a candidate-query vs constraint predicate mismatch bug; loop ends by design
     log.error("Booking retry cap {} reached, dealershipId={}", MAX_ATTEMPTS, request.dealershipId());
     throw new SchedulerException(ErrorCode.KUSS_INTERNAL_ERROR, "Booking could not be completed.");
 }
@@ -56,9 +55,9 @@ private AppointmentResultDto bookOnce(BookAppointmentDto request, String idempot
     }
     BookingContext context = loadAndValidate(request);          // 404 / 400 / 409 VEHICLE (EXISTS precheck)
     CandidateDto candidate = pickCandidate(context);             // 409 NO_CAPACITY when a list is empty
-    AppointmentDto appointment = AppointmentDto.confirmed(context, candidate, clock.instant().truncatedTo(ChronoUnit.MICROS));
+    AppointmentDto appointment = appointmentMapper.confirmed(context, candidate, clock.instant().truncatedTo(ChronoUnit.MICROS));
     appointmentRepository.insert(appointment);                   // JdbcClient; may throw 23P01
-    AppointmentResultDto result = new AppointmentResultDto(201, appointment);
+    AppointmentResultDto result = AppointmentResultDto.builder().status(201).appointment(appointment).build();
     idempotencyService.complete(idempotencyKey, result);
     return result;
 }
@@ -124,7 +123,7 @@ Modify: `{root}/src/main/java/com/keyloop/scheduler/appointment/AppointmentRepos
    - mismatch: same key, other vehicle → 422 `KUSS_IDEMPOTENCY_KEY_MISMATCH`, still 1 row.
    - failure not stored: key on a full slot → NO_CAPACITY; free a bay via JDBC; same key → 201.
    - in-flight (deterministic; harness local to `IdempotencyIT`, the only user <!-- Updated: Red Team #3, #5 -->): holder `Connection` from `DataSource` in try-with-resources, `autoCommit=false`, `holderPid = SELECT pg_backend_pid()`, `INSERT INTO idempotency_key (idempotency_key, request_hash) VALUES ('k-held', 'x')`; submit `book(…, "k-held")` on another thread; Awaitility (≤ 5s) until `SELECT count(*) FROM pg_stat_activity WHERE pg_blocking_pids(pid) @> ARRAY[:holderPid]` = 1; holder `commit()` → `future.get(10, SECONDS)` fails `KUSS_IDEMPOTENCY_IN_FLIGHT`. Variant: holder `rollback()` → future returns 201.
-5. Implement: DTO records (`BookAppointmentDto` with `@NotNull`/`@NotBlank @Size(max = 40)`/`OffsetDateTime desiredStartTime`; `AppointmentDto.from(AppointmentEntity)` + `confirmed(...)`), `SqlErrorUtils`, `CandidateSelectionUtils`, write-repository fragment, `IdempotencyServiceImpl`, `AppointmentServiceImpl.book` (+ `loadAndValidate` using `TimeSlotUtils.candidateStarts(...).contains` + `isWithinHorizon` + vehicle precheck, `pickCandidate` with `TimeSlotUtils.localDay` bounds, pre-registered retry counters via `MeterRegistry`, `transactionTemplate.setTimeout(5)`).
+5. Implement: DTO records (`BookAppointmentDto` with `@NotNull`/`@NotBlank @Size(max = 40)`/`OffsetDateTime desiredStartTime`; `@Builder` on every record; MapStruct `AppointmentMapper` owns `toDto(AppointmentEntity)` and `confirmed(context, candidate, createdAt)`, with no mapping inside DTOs), `SqlErrorUtils`, `CandidateSelectionUtils`, write-repository fragment, `IdempotencyServiceImpl`, `AppointmentServiceImpl.book` (+ `loadAndValidate` using `TimeSlotUtils.candidateStarts(...).contains` + `isWithinHorizon` + vehicle precheck, `pickCandidate` with `TimeSlotUtils.localDay` bounds, pre-registered retry counters via `MeterRegistry`, `transactionTemplate.setTimeout(5)`).
 6. `./mvnw verify` green; run `BookingConcurrencyIT` 5× (`./mvnw verify -Dit.test=BookingConcurrencyIT` loop) → no flake.
 
 ## Todo List

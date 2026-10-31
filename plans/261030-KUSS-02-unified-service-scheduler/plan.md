@@ -50,6 +50,14 @@ Never cut: any Test map row, `BookingConcurrencyIT`, the vehicle precheck, idemp
 - Minimal POST body `{dealershipId, vehicleId, serviceTypeCode, desiredStartTime}`; customer derived from vehicle.
 - Extra read endpoints + cancel; no auth; request signing roadmap only; no Redis/RabbitMQ/WebSocket in code or compose.
 
+## Conventions added after validation (developer decisions, 2026-10-31)
+Binding for KUSS-04, full text in `docs/code-standards.md` and `.claude/rules/java-conventions.md`:
+- No inline comments (`//`, `/* */`) in main or test code; descriptive Javadoc only, required on core business methods (booking, availability, cancellation, idempotency, audit). No `ponytail:` marker comments: shortcuts are recorded in this plan (Out of scope) or docs. The `//` notes inside this plan's code snippets are for the reader only; don't copy them into code.
+- Test methods are snake_case with prefix `should_` (`should_return_409_when_vehicle_already_booked`), no `// given/when/then`.
+- Entities use Lombok `@Getter @Setter @Builder` + protected no-args / private all-args constructors, never `@Data`.
+- Own domain types (entities, DTOs, value objects) are built with `X.builder()...build()`, never `new X(params)`; JDK/framework types and exceptions keep `new`.
+- Mapping lives in MapStruct `*Mapper` interfaces (`componentModel = "spring"`), never inside DTOs (no `from(...)` / `toEntity()`).
+
 ## Draft corrections (C-017 gaps → resolution → phase)
 | C-017 | Resolution | Phase |
 |---|---|---|
@@ -88,7 +96,8 @@ Also: draft §7.2 "rollback sub-tx" and "insert key last" superseded by rows #1/
 ## Out of scope
 - Docs deliverables (system design doc, README, AI log, video) → KUSS-06 docs worker.
 - Retest / bug report → KUSS-05. cURL examples doc → KUSS-06 (springdoc OpenAPI is the client stub).
-- Auth, request signing, Redis, RabbitMQ, WebSocket, admin CRUD, shifts/breaks, pagination.
+- Auth, request signing, Redis, RabbitMQ, WebSocket, admin CRUD, shifts/breaks, pagination. `GET /customers` is unbounded and public: paginate and scope by auth once customers are real data.
+- `MAX_ATTEMPTS` booking retry cap: only trips on a bug where the candidate query and the constraint predicate disagree; the loop normally ends when candidates run out.
 - Rate limiting: none in V1, so anyone can read and cancel everything; the 90-day horizon only bounds how far ahead capacity can be held (Red Team #14).
 
 ## Dependencies / risks

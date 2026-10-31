@@ -96,6 +96,7 @@ FROM generate_series(1, 24) AS n;
 Entities (field access, protected no-arg ctor, getters only — writes go through `JdbcClient`):
 - `DealershipEntity` (`dealership`), `ServiceTypeEntity` (`service_type`, `@Id String code`), `ServiceBayEntity`, `TechnicianEntity` (+ `@ElementCollection @CollectionTable(name = "technician_skill", joinColumns = @JoinColumn(name = "technician_id")) @Column(name = "service_type_code") Set<String> skillCodes`, lazy), `CustomerEntity`, `VehicleEntity` (plain `UUID customerId`, no associations), `AppointmentEntity` (plain UUID FK columns, `@Enumerated(STRING) AppointmentStatus status`, `Instant` times).
 - Every entity: `@Table(name = "…")` and `@Column(name = "snake_case")` on every field (no reliance on the naming strategy).
+- Every entity: Lombok `@Getter @Setter @Builder @NoArgsConstructor(access = PROTECTED) @AllArgsConstructor(access = PRIVATE)`; never `@Data`, `@EqualsAndHashCode` or `@ToString` (`docs/code-standards.md`). <!-- Updated: conventions 2026-10-31 -->
 - No entity for `idempotency_key` / `request_audit`: only `JdbcClient` touches them (YAGNI).
 
 ## Related Code Files

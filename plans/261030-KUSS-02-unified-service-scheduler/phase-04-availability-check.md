@@ -56,7 +56,7 @@ Repository queries (JPQL):
 `{root}` = `/Users/kangourouuu/orca/workspaces/keyloop-unified-service-scheduler/tilefish`. Create:
 - `{root}/src/main/java/com/keyloop/scheduler/common/util/TimeSlotUtils.java`
 - `{root}/src/main/java/com/keyloop/scheduler/availability/{AvailabilitySweepUtils,AvailabilityService,AvailabilityServiceImpl,AvailabilityController}.java`
-- `{root}/src/main/java/com/keyloop/scheduler/availability/{AvailabilityDto,SlotDto,BusyIntervalDto}.java` (`BusyIntervalDto.from(AppointmentEntity)`)
+- `{root}/src/main/java/com/keyloop/scheduler/availability/{AvailabilityDto,SlotDto,BusyIntervalDto}.java` + MapStruct `AvailabilityMapper` (`toBusyInterval(AppointmentEntity)`; no mapping inside DTOs) <!-- Updated: conventions 2026-10-31 -->
 - `{root}/src/main/java/com/keyloop/scheduler/catalog/{CatalogService,CatalogServiceImpl,CatalogController}.java`
 - `{root}/src/main/java/com/keyloop/scheduler/catalog/{DealershipDto,DealershipDetailDto,ServiceTypeDto,CustomerDto}.java` (bay/technician/vehicle as nested records with `from(...)`)
 - `{root}/src/test/java/com/keyloop/scheduler/common/util/TimeSlotUtilsTest.java`
@@ -93,7 +93,7 @@ Modify: `ServiceBayRepository`, `TechnicianRepository`, `AppointmentRepository` 
 
 ## Risk Assessment
 - `OffsetDateTime` serialization: Jackson must keep the offset (not normalize to UTC) → asserted in `AvailabilityApiIT`.
-- `GET /customers` is unbounded and unauthenticated → `// ponytail: unbounded, public list of customer names; fine for seeded data, paginate + auth-scope when customers are real` comment.
+- `GET /customers` is unbounded and unauthenticated → recorded in plan.md Out of scope (pagination + auth scoping when customers are real); no code comment. <!-- Updated: conventions 2026-10-31 -->
 - Lazy `skillCodes` outside a tx → map to DTOs inside the `readOnly` service method (`open-in-view: false`).
 
 ## Security Considerations

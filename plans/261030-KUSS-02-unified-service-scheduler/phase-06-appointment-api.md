@@ -38,7 +38,7 @@ public AppointmentResultDto cancel(UUID appointmentId, String idempotencyKey) {
     }
     AppointmentDto appointment = appointmentRepository.findForUpdate(appointmentId)
             .orElseThrow(() -> new SchedulerException(ErrorCode.KUSS_RESOURCE_NOT_FOUND, "Appointment not found."));
-    AppointmentResultDto result = new AppointmentResultDto(200, cancelIfConfirmed(appointment));
+    AppointmentResultDto result = AppointmentResultDto.builder().status(200).appointment(cancelIfConfirmed(appointment)).build();
     idempotencyService.complete(idempotencyKey, result);
     return result;
 }
