@@ -388,6 +388,7 @@ sequenceDiagram
 - **Reason:** Provide request auditing for incident investigation across all API endpoints without blocking request execution.
 - **Execution Lifecycle:**
   1. **Scope:** Every incoming API request (including `GET` availability reads and failed `4xx`/`500` calls) is captured.
+     - **Developer decision (after review, 2026-10-31):** audit scope "/api/**" becomes "all paths except actuator and API docs" (matched on the normalized servlet path) — overrides. Reason: red-team finding #10.
   2. **Ingress & Correlation:** `AuditLoggingFilter` assigns a unique `requestId` (UUID), injects it into MDC logging context and the `X-Request-Id` response header, notes `startTime = Instant.now()`, and caches the sanitized JSON request body (structural IDs/timestamps only; no PII).
   3. **Execution & Non-Blocking Completion:** The HTTP request executes normally. Upon response completion (in a `finally` block), the filter records `httpStatus`, extracts the `KUSS_*` error code (populated via request attribute set by `@RestControllerAdvice` on non-2xx; `null` on success), and computes `durationMs`.
   4. **Off-Critical-Path Persistence:** The filter dispatches the audit event asynchronously (using Java 21 Virtual Threads) so the HTTP response is flushed to the client immediately without waiting for DB audit I/O.
@@ -406,7 +407,7 @@ sequenceDiagram
 | `GET /api/v1/dealerships` | List dealerships & operating hours | — | `200 OK` |
 | `GET /api/v1/dealerships/{dealershipId}` | Inspect dealership details, active bays & technicians | Path `dealershipId` | `200 OK`, `404 Not Found` |
 | `GET /api/v1/service-types` | List service catalog & durations | — | `200 OK` |
-| `GET /api/v1/customers` | List seeded customers & vehicles (for test harness/discovery) | — | `200 OK` |
+| `GET /api/v1/customers` | List seeded customers & vehicles (for test harness/discovery)<br/>- **Developer decision (after review, 2026-10-31):** vehicles are returned as id, make, model, modelYear only (no VIN, no plate) — overrides. Reason: red-team finding #10. | — | `200 OK` |
 | `GET /api/v1/dealerships/{dealershipId}/availability` | Check bookable 30-min start slots | `?date=2026-11-02&serviceType=BRAKE_REPAIR` | `200 OK`, `400 Bad Request`, `404 Not Found` |
 | `GET /api/v1/dealerships/{dealershipId}/appointments` | Inspect confirmed & cancelled appointments for date | `?date=2026-11-02` | `200 OK`, `400 Bad Request`, `404 Not Found` |
 | `POST /api/v1/appointments` | Request & atomically confirm booking | Header: `Idempotency-Key` (REQUIRED)<br>Body: `{ dealershipId, vehicleId, serviceTypeCode, desiredStartTime }` (Customer derived from `Vehicle`) | `201 Created` (or replayed `201/200`), `400 Bad Request` (missing `Idempotency-Key`, invalid grid/hours/past date), `404 Not Found`, `409 Conflict` (in-flight same key, or no capacity/vehicle overlap), `422 Unprocessable Content` (idempotency payload mismatch) |
@@ -503,6 +504,7 @@ Per `KeyloopCodingChallange.pdf` (*"A Note on Ambiguity"*), the following explic
 7. **Single-Step Confirmation (No Payment Hold):** Bookings confirm immediately upon availability verification; no payment gateway or temporary `PENDING` hold TTL exists in V1.
 8. **Pre-Seeded Catalog & Roster:** Dealerships, bays, technicians, skills, service types, and test customers/vehicles are seeded via Flyway migrations rather than managed through administrative CRUD APIs.
 9. **No Authentication / Authorization in V1:** In accordance with the challenge scope, API endpoints do not require authentication tokens; customer and vehicle discovery endpoints exist to supply valid test identifiers for the API harness.
+   - **Developer decision (after review, 2026-10-31):** anyone can read all data and cancel any appointment; auth and per-dealership scoping are roadmap; there is no rate limiting — overrides. Reason: red-team finding #10.
 10. **Comprehensive Request Auditing:**
     - **Agent selection:** none (not in the draft)
     - **Developer decision (after review, 2026-10-30):** Every API request (reads included) is audited asynchronously into a daily-partitioned `request_audit` table with BRIN timestamp indexing and a rolling 14-day retention window — adds
@@ -537,6 +539,7 @@ To make review effortless, here is what we explicitly agreed in chat versus defa
 - **Agent selection:** none (not in the draft)
 - **Developer decision (after review, 2026-10-30):** Add dedicated `request_audit` table partitioned daily with BRIN index, 14-day rolling retention, and off-critical-path async write — adds
 - **Reason:** Provide request auditing for incident investigation across all API endpoints without blocking request execution.
+- **Developer decision (after review, 2026-10-31):** audit scope "/api/**" becomes "all paths except actuator and API docs" (matched on the normalized servlet path) — overrides. Reason: red-team finding #10.
 
 ### Error Handling & Prefixed Error Codes (KUSS_*)
 - **Agent selection:** RFC 9457 ProblemDetail errors (§1 line 47, §3 line 47, §5 line 145) with no error-code catalog and no global handler

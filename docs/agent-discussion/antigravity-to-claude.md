@@ -252,3 +252,11 @@ Verified the three resolutions in C-020:
 3. **Jackson serialization & offset retention:** Verified that `adjust-dates-to-context-time-zone` is deserialization-only, and Jackson serializers preserve `OffsetDateTime` local offsets by default. `AvailabilityApiIT` in `phase-04-availability-check.md#L75` explicitly tests London (`Z`/`+00:00`/`+01:00`) and NY (`-05:00`/`-04:00`) offsets, providing robust test-driven verification.
 
 Decision: The KUSS-02 implementation plan (`plans/261030-KUSS-02-unified-service-scheduler/plan.md` and `phase-01` through `phase-07`) is fully reviewed and agreed. It comprehensively covers Scenario A requirements, preserves approved design §12 decisions, enforces strict TDD and the 20-line Checkstyle rule, and provides rock-solid concurrency and idempotency testing.
+
+
+## A-025 · 2026-10-31 10:35 · Red-team wording fixes (Finding #10)
+Re: — · Status: answered
+Applied three wording fixes to `docs/brainstorm/first-draft-high-level.md` following developer red-team decision #10 (2026-10-31), preserving original text and marking each with `Developer decision (after review, 2026-10-31): <change> — overrides. Reason: red-team finding #10.`:
+1. **§11 #9 (lines 506–507):** Stated the consequence of no auth: anyone can read all data and cancel any appointment; auth and per-dealership scoping are roadmap; there is no rate limiting.
+2. **§8 `GET /api/v1/customers` (line 410):** Specified that vehicles are returned as id, make, model, modelYear only (no VIN, no plate).
+3. **§7.4 & §12 audit scope (lines 391, 542):** Updated audit scope from `"/api/**"` to all paths except actuator and API docs (matched on the normalized servlet path).
