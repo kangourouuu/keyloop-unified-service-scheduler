@@ -263,6 +263,48 @@ class AppointmentApiIT extends IntegrationTestSupport {
   }
 
   @Test
+  void should_cancel_once_when_parallel_cancels_use_different_keys() throws Exception {
+    UUID appointmentId =
+        UUID.fromString(id(book(request(SeedIds.vehicle(1), "OIL_CHANGE", dayAt(10, 0)), "k-p0")));
+    CountDownLatch startGate = new CountDownLatch(1);
+    List<ResponseEntity<String>> responses = new ArrayList<>();
+    try (ExecutorService executor = Executors.newFixedThreadPool(6)) {
+      List<Future<ResponseEntity<String>>> futures = new ArrayList<>();
+      for (int caller = 1; caller <= 6; caller++) {
+        String key = "k-parallel-cancel-" + caller;
+        futures.add(
+            executor.submit(() -> {
+              startGate.await();
+              return cancel(appointmentId, key);
+            }));
+      }
+      startGate.countDown();
+      for (Future<ResponseEntity<String>> future : futures) {
+        responses.add(future.get(30, TimeUnit.SECONDS));
+      }
+    }
+
+    assertThat(responses)
+        .allSatisfy(response -> assertThat(response.getStatusCode().value()).isEqualTo(200));
+    assertThat(responses)
+        .extracting(
+            response -> jsonMapper.readTree(response.getBody()).get("cancelledAt").asString())
+        .doesNotContainNull()
+        .containsOnly(responseCancelledAt(responses.get(0)));
+    assertThat(
+            jdbcClient
+                .sql("SELECT count(*) FROM appointment WHERE id = :id AND status = 'CANCELLED'")
+                .param("id", appointmentId)
+                .query(Long.class)
+                .single())
+        .isEqualTo(1L);
+  }
+
+  private String responseCancelledAt(ResponseEntity<String> response) {
+    return jsonMapper.readTree(response.getBody()).get("cancelledAt").asString();
+  }
+
+  @Test
   void should_free_capacity_on_cancel_so_a_new_vehicle_can_book_the_slot() {
     String first = id(book(request(SeedIds.vehicle(1), "OIL_CHANGE", dayAt(10, 0)), "k-c1"));
     book(request(SeedIds.vehicle(2), "OIL_CHANGE", dayAt(10, 0)), "k-c2");

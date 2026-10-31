@@ -11,7 +11,6 @@ import static org.mockito.Mockito.when;
 import com.keyloop.scheduler.appointment.dto.BookAppointmentDto;
 import com.keyloop.scheduler.appointment.mapper.AppointmentMapper;
 import com.keyloop.scheduler.appointment.repository.AppointmentRepository;
-import com.keyloop.scheduler.appointment.repository.AppointmentWriteRepository;
 import com.keyloop.scheduler.appointment.service.IdempotencyService;
 import com.keyloop.scheduler.catalog.repository.DealershipRepository;
 import com.keyloop.scheduler.catalog.repository.ServiceTypeRepository;
@@ -67,7 +66,6 @@ class AppointmentServiceImplTest {
         mock(VehicleRepository.class),
         mock(ServiceTypeRepository.class),
         mock(AppointmentRepository.class),
-        mock(AppointmentWriteRepository.class),
         mock(AppointmentMapper.class),
         mock(IdempotencyService.class),
         transactionManager,

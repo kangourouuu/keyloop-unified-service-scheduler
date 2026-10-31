@@ -1,14 +1,12 @@
 package com.keyloop.scheduler.appointment.repository;
 
 import com.keyloop.scheduler.appointment.entity.AppointmentEntity;
-import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -89,9 +87,17 @@ public interface AppointmentRepository extends JpaRepository<AppointmentEntity, 
       @Param("slotStart") Instant slotStart,
       @Param("slotEnd") Instant slotEnd);
 
-  @Lock(LockModeType.PESSIMISTIC_WRITE)
-  @Query("select a from AppointmentEntity a where a.id = :id")
-  Optional<AppointmentEntity> findForUpdate(@Param("id") UUID id);
+  @Modifying(clearAutomatically = true)
+  @Query(
+      """
+      update AppointmentEntity a
+      set a.status = com.keyloop.scheduler.appointment.entity.AppointmentStatus.CANCELLED,
+          a.cancelledAt = :now
+      where a.id = :id
+        and a.status = com.keyloop.scheduler.appointment.entity.AppointmentStatus.CONFIRMED
+        and a.startTime > :now
+      """)
+  int cancelIfConfirmedAndNotStarted(@Param("id") UUID id, @Param("now") Instant now);
 
   List<AppointmentEntity>
       findByDealershipIdAndStartTimeGreaterThanEqualAndStartTimeLessThanOrderByStartTime(

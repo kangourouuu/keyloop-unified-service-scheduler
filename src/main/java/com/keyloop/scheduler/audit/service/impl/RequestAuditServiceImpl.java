@@ -7,7 +7,7 @@ import static com.keyloop.scheduler.common.constants.MetricConstants.TAG_STATUS;
 
 import com.keyloop.scheduler.audit.dto.RequestAuditDto;
 import com.keyloop.scheduler.audit.mapper.RequestAuditMapper;
-import com.keyloop.scheduler.audit.repository.RequestAuditWriteRepository;
+import com.keyloop.scheduler.audit.repository.RequestAuditRepository;
 import com.keyloop.scheduler.audit.service.RequestAuditService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -21,16 +21,16 @@ import org.springframework.transaction.interceptor.TransactionAspectSupport;
 @Service
 class RequestAuditServiceImpl implements RequestAuditService {
 
-  private final RequestAuditWriteRepository writeRepository;
+  private final RequestAuditRepository requestAuditRepository;
   private final RequestAuditMapper requestAuditMapper;
   private final Counter successes;
   private final Counter failures;
 
   RequestAuditServiceImpl(
-      RequestAuditWriteRepository writeRepository,
+      RequestAuditRepository requestAuditRepository,
       RequestAuditMapper requestAuditMapper,
       MeterRegistry meterRegistry) {
-    this.writeRepository = writeRepository;
+    this.requestAuditRepository = requestAuditRepository;
     this.requestAuditMapper = requestAuditMapper;
     this.successes = meterRegistry.counter(AUDIT_WRITES, TAG_STATUS, STATUS_SUCCESS);
     this.failures = meterRegistry.counter(AUDIT_WRITES, TAG_STATUS, STATUS_FAILURE);
@@ -40,7 +40,7 @@ class RequestAuditServiceImpl implements RequestAuditService {
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void write(RequestAuditDto audit) {
     try {
-      writeRepository.insert(requestAuditMapper.toEntity(audit));
+      requestAuditRepository.saveAndFlush(requestAuditMapper.toEntity(audit));
       successes.increment();
     } catch (RuntimeException ex) {
       TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();

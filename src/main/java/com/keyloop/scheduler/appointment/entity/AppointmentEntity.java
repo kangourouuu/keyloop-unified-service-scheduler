@@ -5,7 +5,10 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -14,6 +17,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.domain.Persistable;
 
 @Entity
 @Table(name = "appointment")
@@ -22,7 +26,7 @@ import lombok.Setter;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-public class AppointmentEntity {
+public class AppointmentEntity implements Persistable<UUID> {
 
   @Id
   @Column(name = "id")
@@ -61,4 +65,17 @@ public class AppointmentEntity {
 
   @Column(name = "cancelled_at")
   private Instant cancelledAt;
+
+  @Transient @Builder.Default private boolean newEntity = true;
+
+  @Override
+  public boolean isNew() {
+    return newEntity;
+  }
+
+  @PostLoad
+  @PostPersist
+  void markNotNew() {
+    this.newEntity = false;
+  }
 }

@@ -9,7 +9,6 @@ import com.keyloop.scheduler.appointment.entity.AppointmentEntity;
 import com.keyloop.scheduler.appointment.entity.AppointmentStatus;
 import com.keyloop.scheduler.appointment.mapper.AppointmentMapper;
 import com.keyloop.scheduler.appointment.repository.AppointmentRepository;
-import com.keyloop.scheduler.appointment.repository.AppointmentWriteRepository;
 import com.keyloop.scheduler.appointment.service.AppointmentService;
 import com.keyloop.scheduler.appointment.service.IdempotencyService;
 import com.keyloop.scheduler.appointment.util.CandidateSelectionUtils;
@@ -91,7 +90,6 @@ class AppointmentServiceImpl implements AppointmentService {
   private final VehicleRepository vehicleRepository;
   private final ServiceTypeRepository serviceTypeRepository;
   private final AppointmentRepository appointmentRepository;
-  private final AppointmentWriteRepository writeRepository;
   private final AppointmentMapper appointmentMapper;
   private final IdempotencyService idempotencyService;
   private final TransactionTemplate transactionTemplate;
@@ -104,7 +102,6 @@ class AppointmentServiceImpl implements AppointmentService {
       VehicleRepository vehicleRepository,
       ServiceTypeRepository serviceTypeRepository,
       AppointmentRepository appointmentRepository,
-      AppointmentWriteRepository writeRepository,
       AppointmentMapper appointmentMapper,
       IdempotencyService idempotencyService,
       PlatformTransactionManager transactionManager,
@@ -114,7 +111,6 @@ class AppointmentServiceImpl implements AppointmentService {
     this.vehicleRepository = vehicleRepository;
     this.serviceTypeRepository = serviceTypeRepository;
     this.appointmentRepository = appointmentRepository;
-    this.writeRepository = writeRepository;
     this.appointmentMapper = appointmentMapper;
     this.idempotencyService = idempotencyService;
     this.transactionTemplate = new TransactionTemplate(transactionManager);
@@ -219,7 +215,7 @@ class AppointmentServiceImpl implements AppointmentService {
     BookingContext context = loadAndValidate(request, now);
     CandidateDto candidate = pickCandidate(context);
     AppointmentDto appointment = newAppointment(request, context, candidate, now);
-    writeRepository.insert(appointmentMapper.toEntity(appointment));
+    appointmentRepository.saveAndFlush(appointmentMapper.toEntity(appointment));
     AppointmentResultDto result =
         AppointmentResultDto.builder().httpStatus(201).appointment(appointment).build();
     idempotencyService.complete(idempotencyKey, result);
@@ -344,9 +340,10 @@ class AppointmentServiceImpl implements AppointmentService {
   }
 
   /**
-   * Cancels a confirmed appointment that has not started yet. The row is locked for the update, so
-   * a second canceller waits and then sees the cancelled state. Cancelling an already cancelled
-   * appointment succeeds with its current state, even when its start is in the past.
+   * Cancels a confirmed appointment that has not started yet with one atomic conditional update, so
+   * no row is locked by a read first. A second canceller waits for the first to commit, matches
+   * nothing, and then sees the cancelled state. Cancelling an already cancelled appointment
+   * succeeds with its current state, even when its start is in the past.
    */
   @Override
   @Transactional(timeout = RequestConstants.TRANSACTION_TIMEOUT_SECONDS)
@@ -356,16 +353,26 @@ class AppointmentServiceImpl implements AppointmentService {
     if (replay.isPresent()) {
       return replay.get();
     }
-    AppointmentEntity appointment =
-        appointmentRepository.findForUpdate(appointmentId).orElseThrow(() -> appointmentNotFound());
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
     AppointmentResultDto result =
         AppointmentResultDto.builder()
             .httpStatus(200)
-            .appointment(cancelIfConfirmed(appointment, now))
+            .appointment(cancelAtomically(appointmentId, now))
             .build();
     idempotencyService.complete(idempotencyKey, result);
     return result;
+  }
+
+  private AppointmentDto cancelAtomically(UUID appointmentId, Instant now) {
+    int cancelled = appointmentRepository.cancelIfConfirmedAndNotStarted(appointmentId, now);
+    AppointmentEntity appointment =
+        appointmentRepository.findById(appointmentId).orElseThrow(() -> appointmentNotFound());
+    if (cancelled == 0 && appointment.getStatus() == AppointmentStatus.CONFIRMED) {
+      throw new SchedulerException(
+          ErrorCode.KUSS_APPOINTMENT_ALREADY_STARTED,
+          ErrorMessageConstants.APPOINTMENT_ALREADY_STARTED);
+    }
+    return appointmentMapper.toDto(appointment);
   }
 
   @Override
@@ -405,19 +412,6 @@ class AppointmentServiceImpl implements AppointmentService {
       throw new SchedulerException(
           ErrorCode.KUSS_VALIDATION_FAILED, ErrorMessageConstants.DATE_OUT_OF_HORIZON);
     }
-  }
-
-  private AppointmentDto cancelIfConfirmed(AppointmentEntity appointment, Instant now) {
-    if (appointment.getStatus() == AppointmentStatus.CONFIRMED) {
-      if (!appointment.getStartTime().isAfter(now)) {
-        throw new SchedulerException(
-            ErrorCode.KUSS_APPOINTMENT_ALREADY_STARTED,
-            ErrorMessageConstants.APPOINTMENT_ALREADY_STARTED);
-      }
-      appointment.setStatus(AppointmentStatus.CANCELLED);
-      appointment.setCancelledAt(now);
-    }
-    return appointmentMapper.toDto(appointment);
   }
 
   private static String cancelRequest(UUID appointmentId) {

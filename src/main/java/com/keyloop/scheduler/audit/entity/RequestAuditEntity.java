@@ -3,7 +3,10 @@ package com.keyloop.scheduler.audit.entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -12,6 +15,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.springframework.data.domain.Persistable;
 
 @Entity
 @Table(name = "request_audit")
@@ -20,7 +24,7 @@ import org.hibernate.type.SqlTypes;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-public class RequestAuditEntity {
+public class RequestAuditEntity implements Persistable<RequestAuditKey> {
 
   @EmbeddedId private RequestAuditKey key;
 
@@ -45,4 +49,22 @@ public class RequestAuditEntity {
   @JdbcTypeCode(SqlTypes.JSON)
   @Column(name = "request_payload")
   private String payload;
+
+  @Transient @Builder.Default private boolean newEntity = true;
+
+  @Override
+  public RequestAuditKey getId() {
+    return key;
+  }
+
+  @Override
+  public boolean isNew() {
+    return newEntity;
+  }
+
+  @PostLoad
+  @PostPersist
+  void markNotNew() {
+    this.newEntity = false;
+  }
 }
