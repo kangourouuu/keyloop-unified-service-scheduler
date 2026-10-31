@@ -6,20 +6,20 @@ These conventions override ponytail's "no interface with a single implementation
 
 ## 1. Naming: class suffix → role
 
-| Suffix | Role |
-|---|---|
-| `*Controller` | Request entry point (REST controller) |
-| `*Service` | Service interface |
-| `*ServiceImpl` | Implementation of that interface |
-| `*Repository` | Spring Data JPA repository |
-| `*Entity` | JPA entity, lower snake_case table name |
-| `*Dto` | Java `record` with `@Builder`, no mapping code |
-| `*Mapper` | MapStruct interface, owns Entity ↔ Dto mapping |
-| `*GlobalHandler` | The single global exception handler |
-| `*Utils` | Static helpers |
-| `*Constants` | Shared constants in `common.constants` |
-| `*Test` | Unit test (Surefire) |
-| `*IT` | Integration test with Testcontainers (Failsafe) |
+|      Suffix      |                      Role                       |
+|------------------|-------------------------------------------------|
+| `*Controller`    | Request entry point (REST controller)           |
+| `*Service`       | Service interface                               |
+| `*ServiceImpl`   | Implementation of that interface                |
+| `*Repository`    | Spring Data JPA repository                      |
+| `*Entity`        | JPA entity, lower snake_case table name         |
+| `*Dto`           | Java `record` with `@Builder`, no mapping code  |
+| `*Mapper`        | MapStruct interface, owns Entity ↔ Dto mapping  |
+| `*GlobalHandler` | The single global exception handler             |
+| `*Utils`         | Static helpers                                  |
+| `*Constants`     | Shared constants in `common.constants`          |
+| `*Test`          | Unit test (Surefire)                            |
+| `*IT`            | Integration test with Testcontainers (Failsafe) |
 
 ### Controller: request entry point
 
@@ -27,8 +27,8 @@ These conventions override ponytail's "no interface with a single implementation
 @RestController
 @RequestMapping("/api/v1/appointments")
 class AppointmentController {
-    private final AppointmentService appointmentService;
-    // constructor injection, delegates to the service, no business logic here
+  private final AppointmentService appointmentService;
+  // constructor injection, delegates to the service, no business logic here
 }
 ```
 
@@ -36,7 +36,7 @@ class AppointmentController {
 
 ```java
 public interface AppointmentService {
-    AppointmentDto book(BookAppointmentDto request, String idempotencyKey);
+  AppointmentDto book(BookAppointmentDto request, String idempotencyKey);
 }
 
 @Service
@@ -47,7 +47,7 @@ class AppointmentServiceImpl implements AppointmentService { ... }
 
 ```java
 interface ServiceBayRepository extends JpaRepository<ServiceBayEntity, UUID> {
-    List<ServiceBayEntity> findByDealershipIdAndIsActiveTrue(UUID dealershipId);
+  List<ServiceBayEntity> findByDealershipIdAndIsActiveTrue(UUID dealershipId);
 }
 ```
 
@@ -80,8 +80,8 @@ Never `class AppointmentDto`, and no `from(...)` / `toEntity()` inside the recor
 ```java
 @Mapper(componentModel = "spring")
 interface AppointmentMapper {
-    AppointmentDto toDto(AppointmentEntity entity);
-    AppointmentEntity toEntity(BookAppointmentDto request);
+  AppointmentDto toDto(AppointmentEntity entity);
+  AppointmentEntity toEntity(BookAppointmentDto request);
 }
 ```
 
@@ -92,8 +92,8 @@ MapStruct generates the implementation at compile time. The pom adds `lombok-map
 ```java
 @RestControllerAdvice
 class SchedulerGlobalHandler {
-    @ExceptionHandler(NoCapacityException.class)
-    ProblemDetail handle(NoCapacityException ex) { ... } // 409, code = KUSS_NO_CAPACITY
+  @ExceptionHandler(NoCapacityException.class)
+  ProblemDetail handle(NoCapacityException ex) { ... } // 409, code = KUSS_NO_CAPACITY
 }
 ```
 
@@ -103,8 +103,8 @@ All errors leave as RFC 9457 `ProblemDetail` with `code` (`KUSS_*`) and `request
 
 ```java
 final class TimeSlotUtils {
-    private TimeSlotUtils() {}
-    static boolean isOnHalfHourGrid(LocalTime time) { ... }
+  private TimeSlotUtils() {}
+  static boolean isOnHalfHourGrid(LocalTime time) { ... }
 }
 ```
 
@@ -112,10 +112,10 @@ final class TimeSlotUtils {
 
 ```java
 public final class ErrorMessageConstants {
-    public static final String BOOKING_NOT_COMPLETED = "Booking could not be completed.";
-    public static final String APPOINTMENT_NOT_FOUND = "Appointment not found.";
+  public static final String BOOKING_NOT_COMPLETED = "Booking could not be completed.";
+  public static final String APPOINTMENT_NOT_FOUND = "Appointment not found.";
 
-    private ErrorMessageConstants() {}
+  private ErrorMessageConstants() {}
 }
 ```
 
@@ -184,10 +184,10 @@ Optional<AppointmentEntity> findById(UUID id);          // ok: return value
 
 ```java
 AppointmentEntity appointment = AppointmentEntity.builder()
-        .vehicleId(vehicleId)
-        .serviceBayId(bayId)
-        .startTime(start)
-        .build();
+    .vehicleId(vehicleId)
+    .serviceBayId(bayId)
+    .startTime(start)
+    .build();
 // not: new AppointmentEntity(vehicleId, bayId, start, ...)
 List<UUID> candidates = new ArrayList<>(freeTechnicianIds);   // JDK type: new is fine
 throw new SchedulerException(ErrorCode.KUSS_NO_CAPACITY);   // exceptions keep new
@@ -199,8 +199,8 @@ Applies to entities, DTOs and our own value objects.
 
 ```java
 List<UUID> busyBayIds = appointments.stream()
-        .map(AppointmentEntity::getServiceBayId)
-        .toList();
+    .map(AppointmentEntity::getServiceBayId)
+    .toList();
 ```
 
 ### Set / HashMap for lookup and uniqueness
@@ -217,9 +217,9 @@ Split long methods into small named steps so each one is unit-testable:
 
 ```java
 public AppointmentDto book(BookAppointmentDto request, String idempotencyKey) {
-    BookingContext context = loadContext(request);
-    validateSlot(context);
-    return appointmentMapper.toDto(insertWithRetry(context));
+  BookingContext context = loadContext(request);
+  validateSlot(context);
+  return appointmentMapper.toDto(insertWithRetry(context));
 }
 ```
 
@@ -273,13 +273,13 @@ Every table change (create, alter, drop, index, constraint, seed data) is a vers
 
 Spotless formats the code and `./mvnw verify` runs `spotless:check`, which fails the build on any unformatted file. Run `./mvnw spotless:apply` before committing.
 
-| Files | Formatter |
-|---|---|
-| Java, main and test | google-java-format, plus unused imports removed and a fixed import order |
-| `pom.xml` | sortPom |
-| `db/migration/*.sql` | DBeaver SQL formatter |
-| `*.yml`, `docker-compose.yml` | Jackson YAML |
-| `README.md`, `docs/*.md` | flexmark (not `docs/brainstorm/`, `docs/agent-discussion/` or `plans/`) |
+|             Files             |                                                      Formatter                                                       |
+|-------------------------------|----------------------------------------------------------------------------------------------------------------------|
+| Java, main and test           | google-java-format, Google style (2-space indent, 100 columns), plus unused imports removed and a fixed import order |
+| `pom.xml`                     | sortPom                                                                                                              |
+| `db/migration/*.sql`          | DBeaver SQL formatter                                                                                                |
+| `*.yml`, `docker-compose.yml` | Jackson YAML                                                                                                         |
+| `README.md`, `docs/*.md`      | flexmark (not `docs/brainstorm/`, `docs/agent-discussion/` or `plans/`)                                              |
 
 - Formatter versions are pinned, so the same code always formats the same way.
 - Format a Flyway migration before its first commit. Reformatting it afterwards changes its checksum, and Flyway refuses to start.
@@ -298,3 +298,5 @@ Each rule above that changed after the first version of this file keeps the agen
 - **Migration names (§4).** Agent selection: `V1__schema.sql`, `V2__seed.sql`. **Developer decision (after review, 2026-10-31):** `V<version>__<description>.sql`, sequential integer, verb-first lower snake_case — overrides. **Reason:** the file name says what the migration does.
 - **Constants (§1).** Agent selection: literals inline at each use, attribute keys inside `RequestAuditFilter`, SQL in repositories. **Developer decision (after review, 2026-10-31):** messages and shared names in `common.constants` `*Constants` classes; one-class literals stay private; SQL stays in repositories (confirms red-team #13) — overrides. **Reason:** one place per message and name, no drift between duplicates.
 - **Formatting (§5).** Agent selection: none (Checkstyle `MethodLength` only). **Developer decision (after review, 2026-10-31):** Spotless with google-java-format, imports, sortPom, SQL, YAML, Markdown; `check` fails `./mvnw verify` — adds. **Reason:** one format, enforced by the build.
+- **Java style (§5).** Agent selection: AOSP style (4-space), chosen by the KUSS-04 implementer to match the doc examples. **Developer decision (after review, 2026-10-31):** default Google style, 2-space, with the examples converted — overrides. **Reason:** keep the formatter's standard style; docs follow the code.
+
