@@ -7,13 +7,15 @@
 
 ## Overview
 - Priority: P1 · Status: Pending · Effort: 3h · Story: KUSS-04 · Commit: `[KUSS-04] Add Spring Boot 4 project skeleton`
-- Buildable Boot 4.0.9 app with wrapper, Checkstyle gate, Surefire/Failsafe split, Testcontainers base, compose + image. No domain code.
+- Buildable Boot 4.0.9 app with wrapper, Spotless + Checkstyle gates, Surefire/Failsafe split, Testcontainers base, compose + image. No domain code.
 
 ## Key Insights
 - Bare `flyway-core` silently skips migrations in Boot 4 → `spring-boot-starter-flyway` + `flyway-database-postgresql`.
 - Testcontainers 2: per-tech modules (`testcontainers-postgresql`), class `org.testcontainers.postgresql.PostgreSQLContainer`.
 - `@Bean @ServiceConnection` container in one `TestcontainersConfiguration` → one container per cached context.
 - Checkstyle plugin 3.6.0 bundles Checkstyle 9.3, which cannot parse Java 21 pattern matching → pin an exact Checkstyle core version as plugin dependency (latest 10.x/11.x on Maven Central at implementation time, written as a literal version, never a range). <!-- Updated: Red Team #14 -->
+- Spotless runs **before** Checkstyle in `validate`: google-java-format output is what `MethodLength` counts, so format first, then measure. google-java-format wraps at 100 columns, one builder/stream call per line: keep methods short enough to stay ≤ 20 lines *after* formatting. <!-- Updated: Spotless decision 2026-10-31 -->
+- Formatting a committed Flyway migration changes its checksum and Flyway then refuses to start. Format each `V<version>__*.sql` before its first commit and pin every formatter version, so `spotless:check` never asks to reformat an applied migration. <!-- Updated: Spotless decision 2026-10-31 -->
 - Decision 1 needs JPA for reads → add `spring-boot-starter-data-jpa` (research pom omitted it); it brings JDBC/`JdbcClient`.
 - Container runtime is **Podman** (Podman Desktop, machine `podman-machine-default`, libkrun), not Docker; no `docker` CLI. The orchestrator provisions JDK 21 (Homebrew) and starts the machine before `/implement`; the implementer installs nothing. Wrapper comes from start.spring.io (no global Maven). <!-- Updated: Validation Session 1 - Podman -->
 - Testcontainers on Podman needs, in the shell that runs `./mvnw`: `DOCKER_HOST=unix://<podman machine API socket>` (from `podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}'`), `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock`, and Ryuk handled: `TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=true` on a rootful machine, else `TESTCONTAINERS_RYUK_DISABLED=true`.
@@ -21,7 +23,7 @@
 
 ## Requirements
 - Functional: app starts against Postgres; `Clock` bean (`Clock.systemUTC()`) injectable; `podman compose up --build` and `docker compose up --build` both run db + app (one compose file, standard Compose spec only).
-- Non-functional: `./mvnw verify` runs Checkstyle (fails on method > 20 lines in main sources), `*Test` via Surefire, `*IT` via Failsafe.
+- Non-functional: `./mvnw verify` runs `spotless:check` (fails on unformatted files; fix with `./mvnw spotless:apply`), then Checkstyle (fails on method > 20 lines in main sources), `*Test` via Surefire, `*IT` via Failsafe.
 
 ## Architecture
 - Package root `com.keyloop.scheduler`; feature packages added later: `common` (error, web, util), `catalog`, `availability`, `appointment` (incl. idempotency), `audit`.
@@ -51,10 +53,16 @@ Create (root `/Users/kangourouuu/orca/workspaces/keyloop-unified-service-schedul
    - main: `-starter-webmvc`, `-starter-data-jpa`, `-starter-validation`, `-starter-actuator`, `-starter-flyway`, `flyway-database-postgresql`, `postgresql` (compile scope: `SqlErrorUtils` reads `PSQLException`), `micrometer-registry-prometheus`, `micrometer-tracing-bridge-brave`, `springdoc-openapi-starter-webmvc-ui`, `org.projectlombok:lombok` (provided), `org.mapstruct:mapstruct`. <!-- Updated: conventions 2026-10-31 -->
    - `maven-compiler-plugin` `annotationProcessorPaths` in this order: `lombok`, `mapstruct-processor`, `lombok-mapstruct-binding` (Lombok must run before MapStruct).
    - test: `-starter-webmvc-test`, `spring-boot-testcontainers`, `testcontainers-junit-jupiter`, `testcontainers-postgresql`, `org.awaitility:awaitility`.
-   - plugins: `spring-boot-maven-plugin`; `maven-checkstyle-plugin:3.6.0` with `checkstyle` core dependency override, `configLocation=checkstyle.xml`, `consoleOutput`, `failOnViolation=true`, `includeTestSourceDirectory=false`, execution `check` bound to `validate`; `maven-failsafe-plugin` goals `integration-test` + `verify`.
+   - plugins: `spring-boot-maven-plugin`; `spotless-maven-plugin` (exact latest version, declared before Checkstyle so it runs first) with goal `check` bound to `validate`: <!-- Updated: Spotless decision 2026-10-31 -->
+     - `java` (main + test): `googleJavaFormat` (pinned version), `removeUnusedImports`, `importOrder`
+     - `pom`: `sortPom`
+     - `sql` on `src/main/resources/db/migration/*.sql`: `dbeaver` formatter
+     - `yaml` on `src/main/resources/*.yml`, `src/test/resources/*.yml`, `docker-compose.yml`: `jackson`
+     - `markdown` on `README.md` and `docs/*.md` (not `docs/brainstorm/**`, `docs/agent-discussion/**` or `plans/**`, which are owned or append-only): `flexmark`
+     `maven-checkstyle-plugin:3.6.0` with `checkstyle` core dependency override, `configLocation=checkstyle.xml`, `consoleOutput`, `failOnViolation=true`, `includeTestSourceDirectory=false`, execution `check` bound to `validate`; `maven-failsafe-plugin` goals `integration-test` + `verify`.
 3. `checkstyle.xml`: `Checker > TreeWalker > MethodLength max=20 countEmpty=true` (default severity error).
-4. **Prove the gate (do not commit):** add temp `src/main/java/com/keyloop/scheduler/CheckstyleProbe.java` with one method of 25 statement lines → `./mvnw -q validate` must FAIL citing `MethodLength`; delete file → `./mvnw -q validate` passes.
-5. Write failing test first: `SchedulerApplicationIT extends IntegrationTestSupport` — `contextLoads()` asserts `Clock` bean exists and `SELECT 1` via `JdbcClient` returns 1. Run `./mvnw verify` → fails (no app yet).
+4. **Prove both gates (do not commit):** run `./mvnw spotless:apply` once so the skeleton is formatted; add a temp mis-indented line to any class → `./mvnw -q validate` must FAIL citing Spotless; revert. <!-- Updated: Spotless decision 2026-10-31 --> Then add temp `src/main/java/com/keyloop/scheduler/CheckstyleProbe.java` with one method of 25 statement lines → `./mvnw -q validate` must FAIL citing `MethodLength`; delete file → `./mvnw -q validate` passes.
+5. Write failing test first: `SchedulerApplicationIT extends IntegrationTestSupport` — `should_start_with_clock_and_database()` asserts `Clock` bean exists and `SELECT 1` via `JdbcClient` returns 1. Run `./mvnw verify` → fails (no app yet).
 6. `TestcontainersConfiguration` (`@TestConfiguration(proxyBeanMethods = false)`, `@Bean @ServiceConnection PostgreSQLContainer postgres()` with `docker.io/library/postgres:17` and `.withCommand("postgres", "-c", "deadlock_timeout=100ms")`). <!-- Updated: Red Team #1 -->
    `IntegrationTestSupport`: `@SpringBootTest(webEnvironment = RANDOM_PORT)`, `@Import(TestcontainersConfiguration.class)`, `@ActiveProfiles("test")`, `@LocalServerPort int port`. Identical annotations on every IT → one cached context, one container.
 7. `SchedulerApplication` with `@EnableScheduling` and `@Bean Clock clock() { return Clock.systemUTC(); }`. Every "now" in later phases = `clock.instant()`.
@@ -80,15 +88,17 @@ Create (root `/Users/kangourouuu/orca/workspaces/keyloop-unified-service-schedul
 - [ ] Prerequisites verified (JDK 21, Podman machine, Testcontainers env)
 - [ ] Wrapper from start.spring.io, executable bit
 - [ ] pom with pinned versions + exact Checkstyle core override
+- [ ] Spotless (google-java-format, imports, sortPom, SQL, YAML, Markdown) + `spotless:apply`; Spotless probe fails then reverted
 - [ ] checkstyle.xml + probe proves failure, probe removed
 - [ ] `SchedulerApplicationIT` written first, then app + Clock bean
 - [ ] application.yml (+prod), application-test.yml
 - [ ] TestcontainersConfiguration + IntegrationTestSupport
-- [ ] Dockerfile (non-root), .dockerignore, docker-compose.yml (deadlock_timeout, TCP healthcheck, restart, 127.0.0.1), .gitignore
+- [ ] Dockerfile (non-root), .dockerignore, docker-compose.yml (deadlock_timeout, TCP healthcheck, restart, 127.0.0.1), .gitignore (append to the existing file, which already ignores `KeyloopCodingChallange.pdf`)
 - [ ] `./mvnw verify` green (on Podman), `podman compose` smoke run
 
 ## Success Criteria
 - `./mvnw verify` → BUILD SUCCESS; Failsafe report lists `SchedulerApplicationIT` passed.
+- `./mvnw spotless:check` passes on the committed tree; the Spotless probe fails it. <!-- Updated: Spotless decision 2026-10-31 -->
 - Probe step: `./mvnw -q validate` fails with `MethodLength` while probe exists, passes after removal.
 - `podman compose up --build` starts both containers; `curl -s localhost:8080/actuator/health` → `{"status":"UP"...}`.
 

@@ -251,3 +251,19 @@ Every table change (create, alter, drop, index, constraint, seed data) is a vers
 - A committed migration is never edited. To change something, add the next `V<version + 1>__<description>.sql`.
 - `spring.flyway.clean-disabled=true`, so nothing can wipe the database.
 - Only exception: the audit maintenance job creates tomorrow's `request_audit` day partitions and drops ones older than 14 days at runtime. It never changes columns, indexes or constraints, because partitions inherit those from the parent table that Flyway created.
+
+## 5. Formatting: Spotless
+
+Spotless formats the code and `./mvnw verify` runs `spotless:check`, which fails the build on any unformatted file. Run `./mvnw spotless:apply` before committing.
+
+| Files | Formatter |
+|---|---|
+| Java, main and test | google-java-format, plus unused imports removed and a fixed import order |
+| `pom.xml` | sortPom |
+| `db/migration/*.sql` | DBeaver SQL formatter |
+| `*.yml`, `docker-compose.yml` | Jackson YAML |
+| `README.md`, `docs/*.md` | flexmark (not `docs/brainstorm/`, `docs/agent-discussion/` or `plans/`) |
+
+- Formatter versions are pinned, so the same code always formats the same way.
+- Format a Flyway migration before its first commit. Reformatting it afterwards changes its checksum, and Flyway refuses to start.
+- Spotless runs before Checkstyle: the 20-line method limit is measured on formatted code.

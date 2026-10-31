@@ -36,3 +36,8 @@ Full rules with examples: `docs/code-standards.md`. These project conventions ov
 - [ ] Javadoc (`/** */`) only, and required on core business methods: booking, availability, cancellation, idempotency, audit. Describe what the method guarantees and why, not how
 - [ ] No `ponytail:` marker comments; record deliberate shortcuts and their ceilings in the plan or docs
 - [ ] Checked in code review (not by Checkstyle)
+
+## Formatting
+
+- [ ] Spotless (google-java-format) must pass: run `./mvnw spotless:apply` before every commit; `./mvnw verify` fails on unformatted code
+- [ ] The 20-line limit counts lines after formatting
