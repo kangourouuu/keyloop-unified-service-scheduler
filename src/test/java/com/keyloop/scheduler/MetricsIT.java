@@ -97,6 +97,48 @@ class MetricsIT extends IntegrationTestSupport {
   }
 
   @Test
+  void should_count_missing_idempotency_key_as_unknown_service_type() {
+    double before = bookingCount("unknown", "KUSS_IDEMPOTENCY_KEY_MISSING");
+
+    ResponseEntity<String> response =
+        http.post()
+            .uri("/api/v1/appointments")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body("{}")
+            .retrieve()
+            .toEntity(String.class);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(400);
+    assertThat(bookingCount("unknown", "KUSS_IDEMPOTENCY_KEY_MISSING")).isEqualTo(before + 1);
+  }
+
+  @Test
+  void should_count_boundary_validation_failures_as_unknown_service_type() {
+    double before = bookingCount("unknown", "KUSS_VALIDATION_FAILED");
+
+    ResponseEntity<String> emptyBody = bookRaw("{}", "k-" + UUID.randomUUID());
+    ResponseEntity<String> malformed = bookRaw("{bad", "k-" + UUID.randomUUID());
+    ResponseEntity<String> badKey = bookRaw("{}", "a b");
+
+    assertThat(emptyBody.getStatusCode().value()).isEqualTo(400);
+    assertThat(malformed.getStatusCode().value()).isEqualTo(400);
+    assertThat(badKey.getStatusCode().value()).isEqualTo(400);
+    assertThat(bookingCount("unknown", "KUSS_VALIDATION_FAILED")).isEqualTo(before + 3);
+  }
+
+  @Test
+  void should_not_count_other_endpoints_as_booking_requests() {
+    double before = bookingCount("unknown", "KUSS_IDEMPOTENCY_KEY_MISSING");
+
+    http.post()
+        .uri("/api/v1/appointments/" + UUID.randomUUID() + "/cancel")
+        .retrieve()
+        .toBodilessEntity();
+
+    assertThat(bookingCount("unknown", "KUSS_IDEMPOTENCY_KEY_MISSING")).isEqualTo(before);
+  }
+
+  @Test
   void should_time_availability_queries() {
     long before = availabilityCount();
 
@@ -132,6 +174,16 @@ class MetricsIT extends IntegrationTestSupport {
 
   private long availabilityCount() {
     return meterRegistry.get(AVAILABILITY_QUERY_DURATION).timer().count();
+  }
+
+  private ResponseEntity<String> bookRaw(String body, String idempotencyKey) {
+    return http.post()
+        .uri("/api/v1/appointments")
+        .header(HeaderConstants.IDEMPOTENCY_KEY, idempotencyKey)
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(body)
+        .retrieve()
+        .toEntity(String.class);
   }
 
   private ResponseEntity<String> book(

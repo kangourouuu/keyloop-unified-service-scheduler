@@ -65,9 +65,11 @@ class RequestAuditIT extends IntegrationTestSupport {
 
   @Test
   void should_not_audit_actuator_requests() {
+    requestIdOf("/actuator");
     requestIdOf("/actuator/health");
     awaitAuditRow(requestIdOf("/nope"));
 
+    assertThat(countByPath("/actuator")).isZero();
     assertThat(countByPath("/actuator/health")).isZero();
   }
 

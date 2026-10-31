@@ -15,6 +15,7 @@ import com.keyloop.scheduler.catalog.repository.ServiceTypeRepository;
 import com.keyloop.scheduler.catalog.repository.TechnicianRepository;
 import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
 import com.keyloop.scheduler.common.constants.MetricConstants;
+import com.keyloop.scheduler.common.constants.RequestConstants;
 import com.keyloop.scheduler.common.error.ErrorCode;
 import com.keyloop.scheduler.common.error.SchedulerException;
 import com.keyloop.scheduler.common.util.TimeSlotUtils;
@@ -51,7 +52,7 @@ class AvailabilityServiceImpl implements AvailabilityService {
    * outside the qualified set never reduce capacity. Only today up to 90 days ahead is accepted.
    */
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, timeout = RequestConstants.TRANSACTION_TIMEOUT_SECONDS)
   public AvailabilityDto getAvailability(
       UUID dealershipId, LocalDate date, String serviceTypeCode) {
     return meterRegistry

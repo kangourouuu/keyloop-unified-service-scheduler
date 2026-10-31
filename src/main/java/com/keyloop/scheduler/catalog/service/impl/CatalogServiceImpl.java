@@ -18,6 +18,7 @@ import com.keyloop.scheduler.catalog.repository.TechnicianRepository;
 import com.keyloop.scheduler.catalog.repository.VehicleRepository;
 import com.keyloop.scheduler.catalog.service.CatalogService;
 import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
+import com.keyloop.scheduler.common.constants.RequestConstants;
 import com.keyloop.scheduler.common.error.ErrorCode;
 import com.keyloop.scheduler.common.error.SchedulerException;
 import java.util.List;
@@ -41,13 +42,13 @@ class CatalogServiceImpl implements CatalogService {
   private final CatalogMapper catalogMapper;
 
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, timeout = RequestConstants.TRANSACTION_TIMEOUT_SECONDS)
   public List<DealershipDto> findDealerships() {
     return dealershipRepository.findAll().stream().map(catalogMapper::toDealership).toList();
   }
 
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, timeout = RequestConstants.TRANSACTION_TIMEOUT_SECONDS)
   public DealershipDetailDto findDealership(UUID dealershipId) {
     DealershipEntity dealership =
         dealershipRepository
@@ -67,7 +68,7 @@ class CatalogServiceImpl implements CatalogService {
   }
 
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, timeout = RequestConstants.TRANSACTION_TIMEOUT_SECONDS)
   public List<ServiceTypeDto> findServiceTypes() {
     return serviceTypeRepository.findByActiveTrueOrderByCode().stream()
         .map(catalogMapper::toServiceType)
@@ -75,7 +76,7 @@ class CatalogServiceImpl implements CatalogService {
   }
 
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, timeout = RequestConstants.TRANSACTION_TIMEOUT_SECONDS)
   public List<CustomerDto> findCustomers() {
     Map<UUID, List<VehicleDto>> vehiclesByCustomer =
         vehicleRepository.findAll().stream()

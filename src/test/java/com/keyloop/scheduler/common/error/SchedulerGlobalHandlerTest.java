@@ -10,19 +10,25 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.keyloop.scheduler.common.constants.HeaderConstants;
 import com.keyloop.scheduler.common.constants.RequestConstants;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -41,7 +47,7 @@ class SchedulerGlobalHandlerTest {
   void setUp() {
     mockMvc =
         MockMvcBuilders.standaloneSetup(new StubController())
-            .setControllerAdvice(new SchedulerGlobalHandler())
+            .setControllerAdvice(new SchedulerGlobalHandler(new SimpleMeterRegistry()))
             .build();
   }
 
@@ -57,6 +63,29 @@ class SchedulerGlobalHandlerTest {
         .andExpect(content().contentTypeCompatibleWith("application/problem+json"))
         .andExpect(jsonPath("$.code").value(code.name()))
         .andExpect(jsonPath("$.requestId").value(REQUEST_ID));
+  }
+
+  @ParameterizedTest
+  @MethodSource("overloadExceptions")
+  void should_return_503_service_busy_with_retry_after_when_the_database_is_overloaded(
+      Exception overload) throws Exception {
+    MvcResult result =
+        mockMvc
+            .perform(get("/stub/overload").requestAttr("overload", overload))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(header().string("Retry-After", "1"))
+            .andExpect(jsonPath("$.code").value("KUSS_SERVICE_BUSY"))
+            .andExpect(jsonPath("$.detail").value("Service is busy. Retry later."))
+            .andReturn();
+
+    assertThat(result.getRequest().getAttribute(RequestConstants.ERROR_CODE_ATTRIBUTE))
+        .isEqualTo("KUSS_SERVICE_BUSY");
+  }
+
+  static Stream<Exception> overloadExceptions() {
+    return Stream.of(
+        new CannotCreateTransactionException("pool timeout"),
+        new QueryTimeoutException("canceling statement due to user request"));
   }
 
   @Test
@@ -201,6 +230,11 @@ class SchedulerGlobalHandlerTest {
     @GetMapping("/stub/constraint")
     String constraint() {
       throw new ConstraintViolationException("bad", Set.of());
+    }
+
+    @GetMapping("/stub/overload")
+    String overload(HttpServletRequest request) throws Exception {
+      throw (Exception) request.getAttribute("overload");
     }
 
     @GetMapping("/stub/boom")

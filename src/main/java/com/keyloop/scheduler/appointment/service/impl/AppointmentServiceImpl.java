@@ -22,6 +22,7 @@ import com.keyloop.scheduler.catalog.repository.VehicleRepository;
 import com.keyloop.scheduler.common.constants.ApiPathConstants;
 import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
 import com.keyloop.scheduler.common.constants.MetricConstants;
+import com.keyloop.scheduler.common.constants.RequestConstants;
 import com.keyloop.scheduler.common.error.ErrorCode;
 import com.keyloop.scheduler.common.error.SchedulerException;
 import com.keyloop.scheduler.common.util.SqlErrorUtils;
@@ -47,6 +48,7 @@ import java.util.stream.Stream;
 import lombok.Builder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -58,7 +60,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 class AppointmentServiceImpl implements AppointmentService {
 
   private static final int MAX_ATTEMPTS = 100;
-  private static final int TRANSACTION_TIMEOUT_SECONDS = 5;
   private static final String VEHICLE_OVERLAP_CONSTRAINT = "excl_appointment_vehicle_overlap";
   private static final String BAY_OVERLAP_CONSTRAINT = "excl_appointment_bay_overlap";
   private static final String CONFLICT_BAY = "bay";
@@ -67,11 +68,11 @@ class AppointmentServiceImpl implements AppointmentService {
   private static final String DEADLOCK_STATE = "40P01";
   private static final Set<String> RETRYABLE_STATES = Set.of("23P01", DEADLOCK_STATE);
   private static final String CONFIRMED_RESULT = "confirmed";
-  private static final String UNKNOWN_SERVICE_TYPE = "unknown";
   private static final Set<String> BOOKING_RESULTS =
       Set.of(
           CONFIRMED_RESULT,
           ErrorCode.KUSS_VALIDATION_FAILED.name(),
+          ErrorCode.KUSS_IDEMPOTENCY_KEY_MISSING.name(),
           ErrorCode.KUSS_RESOURCE_NOT_FOUND.name(),
           ErrorCode.KUSS_INTERNAL_ERROR.name(),
           ErrorCode.KUSS_SERVICE_BUSY.name(),
@@ -117,7 +118,7 @@ class AppointmentServiceImpl implements AppointmentService {
     this.appointmentMapper = appointmentMapper;
     this.idempotencyService = idempotencyService;
     this.transactionTemplate = new TransactionTemplate(transactionManager);
-    this.transactionTemplate.setTimeout(TRANSACTION_TIMEOUT_SECONDS);
+    this.transactionTemplate.setTimeout(RequestConstants.TRANSACTION_TIMEOUT_SECONDS);
     this.retryCounters = registerRetryCounters(meterRegistry);
     this.meterRegistry = meterRegistry;
   }
@@ -161,7 +162,7 @@ class AppointmentServiceImpl implements AppointmentService {
     String serviceType =
         TRACKED_SERVICE_TYPE_RESULTS.contains(result)
             ? request.serviceTypeCode()
-            : UNKNOWN_SERVICE_TYPE;
+            : MetricConstants.UNKNOWN_SERVICE_TYPE;
     bookingCounter(serviceType, result).increment();
   }
 
@@ -172,7 +173,7 @@ class AppointmentServiceImpl implements AppointmentService {
             .map(ServiceTypeEntity::getCode)
             .toList();
     BOOKING_RESULTS.forEach(result -> {
-      bookingCounter(UNKNOWN_SERVICE_TYPE, result);
+      bookingCounter(MetricConstants.UNKNOWN_SERVICE_TYPE, result);
       if (TRACKED_SERVICE_TYPE_RESULTS.contains(result)) {
         serviceTypeCodes.forEach(code -> bookingCounter(code, result));
       }
@@ -271,6 +272,10 @@ class AppointmentServiceImpl implements AppointmentService {
     if (VEHICLE_OVERLAP_CONSTRAINT.equals(constraint)) {
       throw vehicleAlreadyBooked();
     }
+    if (ex instanceof QueryTimeoutException) {
+      log.warn("Booking aborted, database statement timed out: {}", ex.getMessage());
+      throw serviceBusy();
+    }
     if (!RETRYABLE_STATES.contains(state)) {
       throw ex;
     }
@@ -344,7 +349,7 @@ class AppointmentServiceImpl implements AppointmentService {
    * appointment succeeds with its current state, even when its start is in the past.
    */
   @Override
-  @Transactional(timeout = TRANSACTION_TIMEOUT_SECONDS)
+  @Transactional(timeout = RequestConstants.TRANSACTION_TIMEOUT_SECONDS)
   public AppointmentResultDto cancel(UUID appointmentId, String idempotencyKey) {
     Optional<AppointmentResultDto> replay =
         idempotencyService.claim(idempotencyKey, cancelRequest(appointmentId));
@@ -364,7 +369,7 @@ class AppointmentServiceImpl implements AppointmentService {
   }
 
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, timeout = RequestConstants.TRANSACTION_TIMEOUT_SECONDS)
   public AppointmentDto getAppointment(UUID appointmentId) {
     return appointmentRepository
         .findById(appointmentId)
@@ -377,7 +382,7 @@ class AppointmentServiceImpl implements AppointmentService {
    * in start order. Only days from 365 days back to 90 days ahead are accepted.
    */
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, timeout = RequestConstants.TRANSACTION_TIMEOUT_SECONDS)
   public List<AppointmentDto> listForDay(UUID dealershipId, LocalDate date) {
     DealershipEntity dealership = findDealership(dealershipId);
     ZoneId zone = ZoneId.of(dealership.getTimezone());

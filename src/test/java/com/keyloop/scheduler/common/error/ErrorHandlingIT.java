@@ -5,6 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.keyloop.scheduler.IntegrationTestSupport;
 import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
 import com.keyloop.scheduler.common.constants.HeaderConstants;
+import java.io.IOException;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -36,6 +40,41 @@ class ErrorHandlingIT extends IntegrationTestSupport {
 
     assertThat(response.getStatusCode().value()).isEqualTo(404);
     assertThat(body.get("code").asString()).isEqualTo("KUSS_RESOURCE_NOT_FOUND");
+  }
+
+  @Test
+  void should_return_404_problem_detail_for_a_direct_error_endpoint_request() {
+    ResponseEntity<String> response = http.get().uri("/error").retrieve().toEntity(String.class);
+    JsonNode body = jsonMapper.readTree(response.getBody());
+
+    assertThat(response.getStatusCode().value()).isEqualTo(404);
+    assertThat(response.getHeaders().getContentType().toString())
+        .startsWith("application/problem+json");
+    assertThat(body.get("code").asString()).isEqualTo("KUSS_RESOURCE_NOT_FOUND");
+    assertThat(body.get("requestId").asString())
+        .isEqualTo(response.getHeaders().getFirst(HeaderConstants.REQUEST_ID));
+  }
+
+  @Test
+  void should_return_problem_detail_for_container_level_bad_requests() throws IOException {
+    for (String target : List.of("/api/v1/dealerships/%00", "/api/v1/dealerships/%ZZ")) {
+      String response = rawGet(target);
+
+      assertThat(response).startsWith("HTTP/1.1 400");
+      assertThat(response).contains("application/problem+json").contains("KUSS_VALIDATION_FAILED");
+      assertThat(response).doesNotContain("<html");
+    }
+  }
+
+  private String rawGet(String target) throws IOException {
+    try (Socket socket = new Socket("localhost", port)) {
+      socket
+          .getOutputStream()
+          .write(
+              ("GET " + target + " HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                  .getBytes(StandardCharsets.US_ASCII));
+      return new String(socket.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+    }
   }
 
   @Test

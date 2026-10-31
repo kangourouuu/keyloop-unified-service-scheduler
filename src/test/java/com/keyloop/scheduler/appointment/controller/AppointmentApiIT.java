@@ -71,6 +71,22 @@ class AppointmentApiIT extends IntegrationTestSupport {
   }
 
   @Test
+  void should_name_each_invalid_field_once_in_the_400_detail() {
+    ResponseEntity<String> empty = book("{}", "k-empty");
+    ResponseEntity<String> longCode =
+        book(request(SeedIds.vehicle(1), "S".repeat(41), dayAt(10, 0)), "k-long-code");
+    ResponseEntity<String> badKey =
+        book(request(SeedIds.vehicle(1), "OIL_CHANGE", dayAt(10, 0)), "a b");
+
+    assertThat(detail(empty))
+        .contains("dealershipId: ", "vehicleId: ", "serviceTypeCode: ", "desiredStartTime: ")
+        .doesNotContain("request:");
+    assertThat(detail(longCode)).startsWith("serviceTypeCode: ").doesNotContain("request:");
+    assertThat(detail(badKey)).startsWith("idempotencyKey: ");
+    assertThat(detail(empty).split(", ")).doesNotHaveDuplicates();
+  }
+
+  @Test
   void should_return_400_idempotency_key_missing_on_book_and_cancel() {
     ResponseEntity<String> booking =
         http.post()
@@ -339,6 +355,10 @@ class AppointmentApiIT extends IntegrationTestSupport {
 
   private String code(ResponseEntity<String> response) {
     return jsonMapper.readTree(response.getBody()).get("code").asString();
+  }
+
+  private String detail(ResponseEntity<String> response) {
+    return jsonMapper.readTree(response.getBody()).get("detail").asString();
   }
 
   private String status(ResponseEntity<String> response) {

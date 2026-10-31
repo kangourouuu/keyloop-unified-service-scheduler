@@ -34,7 +34,7 @@ import tools.jackson.databind.node.ObjectNode;
 class RequestAuditFilter extends OncePerRequestFilter {
 
   private static final List<String> UNAUDITED_PREFIXES =
-      List.of("/actuator/", "/v3/api-docs", "/swagger-ui");
+      List.of("/actuator", "/v3/api-docs", "/swagger-ui");
   private static final String BOOKING_METHOD = "POST";
   private static final List<String> BOOKING_PAYLOAD_FIELDS =
       List.of("dealershipId", "vehicleId", "serviceTypeCode", "desiredStartTime");
