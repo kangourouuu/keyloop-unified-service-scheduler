@@ -50,12 +50,12 @@ private ProblemDetail problem(HttpStatusCode status, ErrorCode code, String deta
     ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
     problem.setInstance(URI.create(request.getRequestURI()));
     problem.setProperty("code", code.name());
-    problem.setProperty("requestId", request.getAttribute(RequestAuditFilter.REQUEST_ID_ATTRIBUTE));
+    problem.setProperty("requestId", request.getAttribute(RequestConstants.REQUEST_ID_ATTRIBUTE));
     request.setAttribute(RequestAuditFilter.ERROR_CODE_ATTRIBUTE, code.name());
     return problem;
 }
 ```
-`RequestAuditFilter extends OncePerRequestFilter`, `@Component`, `@Order(Ordered.HIGHEST_PRECEDENCE)`: `requestId = UUID.randomUUID()` (never trust an inbound header), `MDC.put("requestId", …)`, `response.setHeader("X-Request-Id", …)`, `request.setAttribute(REQUEST_ID_ATTRIBUTE, …)`; `finally MDC.remove("requestId")`. Constants: `REQUEST_ID_ATTRIBUTE = "kuss_request_id"`, `ERROR_CODE_ATTRIBUTE = "kuss_error_code"`.
+`RequestAuditFilter extends OncePerRequestFilter`, `@Component`, `@Order(Ordered.HIGHEST_PRECEDENCE)`: `requestId = UUID.randomUUID()` (never trust an inbound header), `MDC.put("requestId", …)`, `response.setHeader(HeaderConstants.REQUEST_ID, …)`, `request.setAttribute(REQUEST_ID_ATTRIBUTE, …)`; `finally MDC.remove("requestId")`. Attribute keys live in `RequestConstants` (`REQUEST_ID_ATTRIBUTE = "kuss_request_id"`, `ERROR_CODE_ATTRIBUTE = "kuss_error_code"`), because the filter, the handler and the audit writer all read them. <!-- Updated: constants decision 2026-10-31 -->
 
 ## Related Code Files
 `{root}` = `/Users/kangourouuu/orca/workspaces/keyloop-unified-service-scheduler/tilefish`. Create:
@@ -63,6 +63,9 @@ private ProblemDetail problem(HttpStatusCode status, ErrorCode code, String deta
 - `{root}/src/main/java/com/keyloop/scheduler/common/error/SchedulerException.java`
 - `{root}/src/main/java/com/keyloop/scheduler/common/error/SchedulerGlobalHandler.java`
 - `{root}/src/main/java/com/keyloop/scheduler/common/web/RequestAuditFilter.java`
+- `{root}/src/main/java/com/keyloop/scheduler/common/constants/ErrorMessageConstants.java`: every fixed `detail` text (`"Malformed request."`, `"Invalid request."`, `"Resource not found."`, `"Method not allowed."`, `"Unexpected error. Quote the requestId when reporting."`; later phases add `BOOKING_NOT_COMPLETED`, `APPOINTMENT_NOT_FOUND`, `APPOINTMENT_ALREADY_STARTED`) <!-- Updated: constants decision 2026-10-31 -->
+- `{root}/src/main/java/com/keyloop/scheduler/common/constants/HeaderConstants.java`: `IDEMPOTENCY_KEY = "Idempotency-Key"`, `REQUEST_ID = "X-Request-Id"`
+- `{root}/src/main/java/com/keyloop/scheduler/common/constants/RequestConstants.java`: request attribute and MDC keys
 - `{root}/src/test/java/com/keyloop/scheduler/common/error/SchedulerGlobalHandlerTest.java` (unit, MockMvc standalone)
 - `{root}/src/test/java/com/keyloop/scheduler/common/error/FailingTestController.java` (test-only, `/api/test/boom`; picked up by component scan in every IT context — intended, reused by `RequestAuditIT`)
 - `{root}/src/test/java/com/keyloop/scheduler/common/error/ErrorHandlingIT.java`

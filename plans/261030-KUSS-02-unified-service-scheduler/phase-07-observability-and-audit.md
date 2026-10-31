@@ -15,6 +15,7 @@
 - We call the executor directly (`@Qualifier("auditExecutor")`), no `@Async`/`@EnableAsync` → nothing to hijack.
 - Partition DDL cannot bind identifiers → names built only from `DateTimeFormatter.BASIC_ISO_DATE` or read from `pg_class` with regex `^request_audit_p[0-9]{8}$`. No user input reaches DDL.
 - `DROP` never prunes `request_audit_default` → separate `DELETE`. Creating a day already present in DEFAULT fails → log, next day self-heals.
+- Metric and tag names live in `common/constants/MetricConstants` (`BOOKING_REQUESTS = "scheduler.booking.requests"`, `BOOKING_GIST_RETRIES`, `AUDIT_WRITES`, `AVAILABILITY_QUERY_DURATION`): registration and the ITs that read them share one name. <!-- Updated: constants decision 2026-10-31 -->
 - Micrometer names without `_total` (`scheduler.booking.requests`); Prometheus adds it → `scheduler_booking_requests_total` as in draft §9.
 - `service_type` tag must stay bounded without a lookup: request code only for outcomes reached after validation (`confirmed`, `KUSS_NO_CAPACITY`, `KUSS_VEHICLE_ALREADY_BOOKED`, `KUSS_IDEMPOTENCY_IN_FLIGHT`, `KUSS_IDEMPOTENCY_KEY_MISMATCH`), else `unknown`. <!-- Updated: Red Team #13 -->
 - Audit scope matched on `request.getServletPath()` (decoded + normalized by the container), never raw `getRequestURI()` (encoded / `;matrix` variants would slip past a prefix check). <!-- Updated: Red Team #10 -->

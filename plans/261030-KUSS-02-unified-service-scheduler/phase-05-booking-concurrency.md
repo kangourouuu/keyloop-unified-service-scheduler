@@ -41,11 +41,11 @@ public AppointmentResultDto book(BookAppointmentDto request, String idempotencyK
             handleConflict(ex);   // vehicle → throw 409; non-retryable → rethrow; bay/tech/40P01 → count + loop
         } catch (CannotCreateTransactionException ex) {   // pool exhausted after connection-timeout
             log.warn("Booking aborted, no DB connection: {}", ex.getMessage());
-            throw new SchedulerException(ErrorCode.KUSS_INTERNAL_ERROR, "Booking could not be completed.");
+            throw new SchedulerException(ErrorCode.KUSS_INTERNAL_ERROR, ErrorMessageConstants.BOOKING_NOT_COMPLETED);
         }
     }
     log.error("Booking retry cap {} reached, dealershipId={}", MAX_ATTEMPTS, request.dealershipId());
-    throw new SchedulerException(ErrorCode.KUSS_INTERNAL_ERROR, "Booking could not be completed.");
+    throw new SchedulerException(ErrorCode.KUSS_INTERNAL_ERROR, ErrorMessageConstants.BOOKING_NOT_COMPLETED);
 }
 
 private AppointmentResultDto bookOnce(BookAppointmentDto request, String idempotencyKey) {

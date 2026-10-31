@@ -37,7 +37,7 @@ public AppointmentResultDto cancel(UUID appointmentId, String idempotencyKey) {
         return replay.get();
     }
     AppointmentDto appointment = appointmentRepository.findForUpdate(appointmentId)
-            .orElseThrow(() -> new SchedulerException(ErrorCode.KUSS_RESOURCE_NOT_FOUND, "Appointment not found."));
+            .orElseThrow(() -> new SchedulerException(ErrorCode.KUSS_RESOURCE_NOT_FOUND, ErrorMessageConstants.APPOINTMENT_NOT_FOUND));
     AppointmentResultDto result = AppointmentResultDto.builder().status(200).appointment(cancelIfConfirmed(appointment)).build();
     idempotencyService.complete(idempotencyKey, result);
     return result;
@@ -49,7 +49,7 @@ private AppointmentDto cancelIfConfirmed(AppointmentDto current) {
     }
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);   // µs = Postgres precision, replay body identical
     if (!current.startTime().isAfter(now)) {
-        throw new SchedulerException(ErrorCode.KUSS_APPOINTMENT_ALREADY_STARTED, "Appointment has already started.");
+        throw new SchedulerException(ErrorCode.KUSS_APPOINTMENT_ALREADY_STARTED, ErrorMessageConstants.APPOINTMENT_ALREADY_STARTED);
     }
     appointmentRepository.markCancelled(current.id(), now);   // JdbcClient UPDATE … WHERE id = :id AND status = 'CONFIRMED'
     return current.cancelled(now);
