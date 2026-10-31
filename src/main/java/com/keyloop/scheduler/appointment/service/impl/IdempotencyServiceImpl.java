@@ -6,6 +6,7 @@ import com.keyloop.scheduler.appointment.entity.IdempotencyKeyEntity;
 import com.keyloop.scheduler.appointment.repository.IdempotencyKeyRepository;
 import com.keyloop.scheduler.appointment.service.IdempotencyService;
 import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
+import com.keyloop.scheduler.common.constants.RequestConstants;
 import com.keyloop.scheduler.common.error.ErrorCode;
 import com.keyloop.scheduler.common.error.SchedulerException;
 import com.keyloop.scheduler.common.util.SqlErrorUtils;
@@ -38,13 +39,14 @@ class IdempotencyServiceImpl implements IdempotencyService {
    * Claims the key inside the caller's transaction, so the claim commits or rolls back together
    * with the booking. A stored response for the same canonical request is replayed; the same key
    * with a different request is rejected; a claim held by another transaction is reported as in
-   * flight.
+   * flight. A key older than 24 hours is treated as absent and replaced, even before the daily
+   * purge removes it.
    */
   @Override
   @Transactional(propagation = Propagation.MANDATORY)
   public Optional<AppointmentResultDto> claim(String key, String canonicalRequest) {
     String requestHash = sha256Hex(canonicalRequest);
-    Optional<IdempotencyKeyEntity> existing = repository.findById(key);
+    Optional<IdempotencyKeyEntity> existing = findLive(key);
     if (existing.isEmpty()) {
       insertClaim(key, requestHash);
       return Optional.empty();
@@ -59,6 +61,16 @@ class IdempotencyServiceImpl implements IdempotencyService {
     entity.setResponseStatus(result.httpStatus());
     entity.setResponseBody(jsonMapper.writeValueAsString(result.appointment()));
     repository.saveAndFlush(entity);
+  }
+
+  private Optional<IdempotencyKeyEntity> findLive(String key) {
+    Instant cutoff = clock.instant().minus(RequestConstants.IDEMPOTENCY_KEY_TTL);
+    Optional<IdempotencyKeyEntity> existing = repository.findById(key);
+    if (existing.isPresent() && existing.get().getCreatedAt().isBefore(cutoff)) {
+      repository.deleteExpired(key, cutoff);
+      return Optional.empty();
+    }
+    return existing;
   }
 
   private void insertClaim(String key, String requestHash) {

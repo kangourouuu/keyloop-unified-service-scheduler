@@ -3,10 +3,10 @@ package com.keyloop.scheduler.audit.service.impl;
 import com.keyloop.scheduler.appointment.repository.IdempotencyKeyRepository;
 import com.keyloop.scheduler.audit.repository.RequestAuditRepository;
 import com.keyloop.scheduler.audit.service.MaintenanceService;
+import com.keyloop.scheduler.common.constants.RequestConstants;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -26,7 +26,6 @@ class MaintenanceServiceImpl implements MaintenanceService, SmartLifecycle {
   private static final String PARTITION_PREFIX = "request_audit_p";
   private static final int PARTITIONS_AHEAD_DAYS = 7;
   private static final int RETENTION_DAYS = 14;
-  private static final Duration IDEMPOTENCY_TTL = Duration.ofHours(24);
   private static final String LIST_PARTITIONS_SQL =
       """
       SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
@@ -69,7 +68,9 @@ class MaintenanceServiceImpl implements MaintenanceService, SmartLifecycle {
         () -> requestAuditRepository.deleteDefaultRowsBefore(startOf(retentionStart)));
     runStep(
         "delete idempotency keys",
-        () -> idempotencyKeyRepository.deleteCreatedBefore(now.minus(IDEMPOTENCY_TTL)));
+        () ->
+            idempotencyKeyRepository.deleteCreatedBefore(
+                now.minus(RequestConstants.IDEMPOTENCY_KEY_TTL)));
   }
 
   @Override

@@ -343,7 +343,7 @@ class AppointmentServiceImpl implements AppointmentService {
    * appointment succeeds with its current state, even when its start is in the past.
    */
   @Override
-  @Transactional
+  @Transactional(timeout = TRANSACTION_TIMEOUT_SECONDS)
   public AppointmentResultDto cancel(UUID appointmentId, String idempotencyKey) {
     Optional<AppointmentResultDto> replay =
         idempotencyService.claim(idempotencyKey, cancelRequest(appointmentId));
@@ -371,17 +371,34 @@ class AppointmentServiceImpl implements AppointmentService {
         .orElseThrow(() -> appointmentNotFound());
   }
 
+  /**
+   * Lists the appointments that start on one local day of the dealership, cancelled ones included,
+   * in start order. Only days from 365 days back to 90 days ahead are accepted.
+   */
   @Override
   @Transactional(readOnly = true)
   public List<AppointmentDto> listForDay(UUID dealershipId, LocalDate date) {
     DealershipEntity dealership = findDealership(dealershipId);
-    TimeSlotUtils.Window day = TimeSlotUtils.localDay(date, ZoneId.of(dealership.getTimezone()));
+    ZoneId zone = ZoneId.of(dealership.getTimezone());
+    requireListableDate(date, zone, clock.instant());
+    TimeSlotUtils.Window day = TimeSlotUtils.localDay(date, zone);
     return appointmentRepository
         .findByDealershipIdAndStartTimeGreaterThanEqualAndStartTimeLessThanOrderByStartTime(
             dealershipId, day.start(), day.end())
         .stream()
         .map(appointmentMapper::toDto)
         .toList();
+  }
+
+  private static void requireListableDate(LocalDate date, ZoneId zone, Instant now) {
+    if (!TimeSlotUtils.isWithinHistory(date, zone, now)) {
+      throw new SchedulerException(
+          ErrorCode.KUSS_VALIDATION_FAILED, ErrorMessageConstants.DATE_BEYOND_HISTORY);
+    }
+    if (!TimeSlotUtils.isWithinHorizon(date, zone, now)) {
+      throw new SchedulerException(
+          ErrorCode.KUSS_VALIDATION_FAILED, ErrorMessageConstants.DATE_OUT_OF_HORIZON);
+    }
   }
 
   private AppointmentDto cancelIfConfirmed(AppointmentEntity appointment, Instant now) {

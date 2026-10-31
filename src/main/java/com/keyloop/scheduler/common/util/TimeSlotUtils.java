@@ -13,6 +13,7 @@ public final class TimeSlotUtils {
 
   private static final Duration GRID_STEP = Duration.ofMinutes(30);
   private static final int MAX_DAYS_AHEAD = 90;
+  private static final int MAX_DAYS_BACK = 365;
 
   private TimeSlotUtils() {}
 
@@ -47,6 +48,19 @@ public final class TimeSlotUtils {
    */
   public static boolean isWithinHorizon(LocalDate date, ZoneId zone, Instant now) {
     return !date.isAfter(LocalDate.ofInstant(now, zone).plusDays(MAX_DAYS_AHEAD));
+  }
+
+  /** Tells whether the date is before today in the dealership's zone. */
+  public static boolean isPast(LocalDate date, ZoneId zone, Instant now) {
+    return date.isBefore(LocalDate.ofInstant(now, zone));
+  }
+
+  /**
+   * Tells whether the date is at most 365 days before today in the dealership's zone. Bounds how
+   * far back the day list reads, and keeps far dates out of the timestamptz range.
+   */
+  public static boolean isWithinHistory(LocalDate date, ZoneId zone, Instant now) {
+    return !date.isBefore(LocalDate.ofInstant(now, zone).minusDays(MAX_DAYS_BACK));
   }
 
   public static Window localDay(LocalDate date, ZoneId zone) {

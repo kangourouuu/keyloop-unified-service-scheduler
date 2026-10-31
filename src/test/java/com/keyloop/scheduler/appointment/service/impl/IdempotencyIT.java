@@ -15,6 +15,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -97,6 +98,21 @@ class IdempotencyIT extends IntegrationTestSupport {
 
     assertThat(book(SeedIds.vehicle(4), "OIL_CHANGE", dayAt(10, 0), "k-retry").httpStatus())
         .isEqualTo(201);
+  }
+
+  @Test
+  void should_treat_a_key_older_than_24_hours_as_absent() {
+    jdbcClient
+        .sql(
+            "INSERT INTO idempotency_key (idempotency_key, request_hash, response_status,"
+                + " response_body, created_at) VALUES ('k-expired', 'x', 201, '{}', :createdAt)")
+        .param("createdAt", Timestamp.from(clock.instant().minus(Duration.ofHours(25))))
+        .update();
+
+    AppointmentResultDto booked = book(SeedIds.vehicle(1), "OIL_CHANGE", dayAt(10, 0), "k-expired");
+
+    assertThat(booked.httpStatus()).isEqualTo(201);
+    assertThat(countAppointments()).isEqualTo(1);
   }
 
   @Test

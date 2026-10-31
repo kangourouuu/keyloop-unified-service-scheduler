@@ -283,6 +283,17 @@ class AppointmentApiIT extends IntegrationTestSupport {
   }
 
   @Test
+  void should_list_a_day_up_to_365_days_back_and_90_days_ahead() {
+    LocalDate today = LocalDate.now(clock);
+
+    assertThat(dayList(today.minusDays(365)).getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(dayList(today.plusDays(90)).getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertValidationFailed(dayList(today.minusDays(366)));
+    assertValidationFailed(dayList(today.plusDays(91)));
+    assertValidationFailed(dayList(LocalDate.MIN));
+  }
+
+  @Test
   void should_publish_the_appointment_paths_in_openapi() {
     ResponseEntity<String> docs = get("/v3/api-docs");
 
@@ -310,6 +321,11 @@ class AppointmentApiIT extends IntegrationTestSupport {
         .header(KEY_HEADER, key)
         .retrieve()
         .toEntity(String.class);
+  }
+
+  private ResponseEntity<String> dayList(LocalDate date) {
+    return get(
+        "/api/v1/dealerships/" + SeedIds.LONDON_DEALERSHIP_ID + "/appointments?date=" + date);
   }
 
   private ResponseEntity<String> get(String uri) {

@@ -13,6 +13,8 @@ public final class ErrorMessageConstants {
   public static final String DEALERSHIP_NOT_FOUND = "Dealership not found.";
   public static final String SERVICE_TYPE_NOT_FOUND = "Service type not found.";
   public static final String DATE_OUT_OF_HORIZON = "Date is more than 90 days ahead.";
+  public static final String DATE_IN_PAST = "Date is in the past.";
+  public static final String DATE_BEYOND_HISTORY = "Date is more than 365 days back.";
 
   public static final String VEHICLE_NOT_FOUND = "Vehicle not found.";
   public static final String SLOT_NOT_BOOKABLE = "Start time is not a bookable slot.";

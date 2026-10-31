@@ -12,4 +12,8 @@ public interface IdempotencyKeyRepository extends JpaRepository<IdempotencyKeyEn
   @Modifying
   @Query("delete from IdempotencyKeyEntity e where e.createdAt < :cutoff")
   int deleteCreatedBefore(@Param("cutoff") Instant cutoff);
+
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Query("delete from IdempotencyKeyEntity e where e.key = :key and e.createdAt < :cutoff")
+  int deleteExpired(@Param("key") String key, @Param("cutoff") Instant cutoff);
 }

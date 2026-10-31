@@ -48,7 +48,7 @@ class AvailabilityServiceImpl implements AvailabilityService {
    * Returns the bookable start times of one local day with the capacity left at each. Capacity is
    * the number of free bays that also have a free qualified technician for the whole service
    * duration. Starts already in the past are dropped, and busy resources outside this dealership or
-   * outside the qualified set never reduce capacity.
+   * outside the qualified set never reduce capacity. Only today up to 90 days ahead is accepted.
    */
   @Override
   @Transactional(readOnly = true)
@@ -70,7 +70,7 @@ class AvailabilityServiceImpl implements AvailabilityService {
     DealershipEntity dealership = findDealership(dealershipId);
     ServiceTypeEntity serviceType = findServiceType(serviceTypeCode);
     ZoneId zone = ZoneId.of(dealership.getTimezone());
-    requireWithinHorizon(date, zone, now);
+    requireBookableDate(date, zone, now);
     int durationMinutes = serviceType.getDurationMinutes();
     List<Instant> starts =
         TimeSlotUtils.candidateStarts(
@@ -84,7 +84,11 @@ class AvailabilityServiceImpl implements AvailabilityService {
         .build();
   }
 
-  private static void requireWithinHorizon(LocalDate date, ZoneId zone, Instant now) {
+  private static void requireBookableDate(LocalDate date, ZoneId zone, Instant now) {
+    if (TimeSlotUtils.isPast(date, zone, now)) {
+      throw new SchedulerException(
+          ErrorCode.KUSS_VALIDATION_FAILED, ErrorMessageConstants.DATE_IN_PAST);
+    }
     if (!TimeSlotUtils.isWithinHorizon(date, zone, now)) {
       throw new SchedulerException(
           ErrorCode.KUSS_VALIDATION_FAILED, ErrorMessageConstants.DATE_OUT_OF_HORIZON);

@@ -103,13 +103,21 @@ class AvailabilityApiIT extends IntegrationTestSupport {
   }
 
   @Test
-  void should_return_200_with_no_slots_for_a_past_date() {
-    JsonNode body =
-        jsonOf(
+  void should_return_400_for_a_past_date() {
+    ResponseEntity<String> response =
+        get(
             availabilityUri(
                 SeedIds.LONDON_DEALERSHIP_ID, LocalDate.now(clock).minusDays(1), "OIL_CHANGE"));
 
-    assertThat(body.get("slots").size()).isZero();
+    assertThat(response.getStatusCode().value()).isEqualTo(400);
+  }
+
+  @Test
+  void should_return_400_for_a_date_beyond_the_postgres_range() {
+    ResponseEntity<String> response =
+        get(availabilityUri(SeedIds.LONDON_DEALERSHIP_ID, LocalDate.MIN, "OIL_CHANGE"));
+
+    assertThat(response.getStatusCode().value()).isEqualTo(400);
   }
 
   @Test
