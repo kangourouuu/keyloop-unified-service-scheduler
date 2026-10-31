@@ -234,9 +234,20 @@ No `ponytail:` marker comments: deliberate shortcuts and their ceilings go in th
 
 ## 4. Schema changes: Flyway only
 
-Every table change (create, alter, drop, index, constraint, seed data) is a versioned Flyway migration in `src/main/resources/db/migration/V<n>__<description>.sql`. Flyway records each one in its own `flyway_schema_history` table and checks its checksum on every start.
+Every table change (create, alter, drop, index, constraint, seed data) is a versioned Flyway migration in `src/main/resources/db/migration/`. Flyway records each one in its own `flyway_schema_history` table and checks its checksum on every start.
 
+- File name: `V<version>__<description>.sql`
+  - `<version>` is a sequential integer: `V1`, `V2`, `V3`. No gaps, no reuse.
+  - Two underscores separate the version from the description.
+  - `<description>` is lower snake_case and starts with a verb: `create`, `add`, `alter`, `drop`, `insert`, `rename`.
+
+  ```text
+  V1__create_schema.sql
+  V2__insert_seed_data.sql
+  V3__add_index_appointment_start_time.sql
+  // not: V3__Index.sql, V3_add_index.sql, V3__AddIndex.sql, V2.1__fix.sql
+  ```
 - Hibernate never touches the schema: `spring.jpa.hibernate.ddl-auto=validate` and `spring.jpa.generate-ddl=false`. Startup fails if an `*Entity` and its table drift apart.
-- A committed migration is never edited. To change something, add the next `V<n+1>__...sql`.
+- A committed migration is never edited. To change something, add the next `V<version + 1>__<description>.sql`.
 - `spring.flyway.clean-disabled=true`, so nothing can wipe the database.
 - Only exception: the audit maintenance job creates tomorrow's `request_audit` day partitions and drops ones older than 14 days at runtime. It never changes columns, indexes or constraints, because partitions inherit those from the parent table that Flyway created.

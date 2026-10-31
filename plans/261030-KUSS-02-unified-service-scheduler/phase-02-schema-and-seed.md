@@ -19,10 +19,10 @@
 
 ## Requirements
 - Functional: schema per draft §6 + idempotency + partitioned audit; seed ≥2 dealerships in different non-UTC zones, bays (incl. one inactive), techs with distinct skills, service types 30/60/90/120, 3 customers, 24 vehicles; fixed UUIDs.
-- Non-functional: versioned Flyway migrations only (no hand-applied DDL); applied automatically on startup. Flyway tracks them in its own `flyway_schema_history` table. Hibernate never changes the schema (`ddl-auto: validate`, `generate-ddl: false`). A committed `V<n>__*.sql` is never edited: any change is a new migration. The only DDL outside Flyway is phase 07's `request_audit` day-partition create/drop. <!-- Updated: developer decision 2026-10-31 -->
+- Non-functional: versioned Flyway migrations only (no hand-applied DDL); applied automatically on startup. Flyway tracks them in its own `flyway_schema_history` table. Hibernate never changes the schema (`ddl-auto: validate`, `generate-ddl: false`). Files are named `V<version>__<description>.sql` (sequential integer, lower snake_case description starting with a verb). A committed migration is never edited: any change is a new migration. The only DDL outside Flyway is phase 07's `request_audit` day-partition create/drop. <!-- Updated: developer decision 2026-10-31 -->
 
 ## Architecture
-`V1__schema.sql` (core of it):
+`V1__create_schema.sql` (core of it):
 ```sql
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 -- dealership: CHECK (open_time < close_time) + minutes of open/close IN (0,30) (keeps the grid valid)
@@ -73,7 +73,7 @@ CREATE INDEX idx_request_audit_request_id ON request_audit (request_id);
 ```
 Other tables per draft §6: `dealership`, `customer` (email UNIQUE), `vehicle` (vin varchar(17) UNIQUE, customer_id NOT NULL FK), `service_bay` (UNIQUE (dealership_id, bay_code), active), `technician` (active), `technician_skill` (PK (technician_id, service_type_code), both FK).
 
-`V2__seed.sql` — UUID scheme `00000000-0000-0000-<TTTT>-<NNNNNNNNNNNN>`, TTTT: 0001 dealership, 0002 bay, 0003 technician, 0004 customer, 0005 vehicle.
+`V2__insert_seed_data.sql` — UUID scheme `00000000-0000-0000-<TTTT>-<NNNNNNNNNNNN>`, TTTT: 0001 dealership, 0002 bay, 0003 technician, 0004 customer, 0005 vehicle.
 
 | Entity | Rows |
 |---|---|
@@ -101,7 +101,7 @@ Entities (field access, protected no-arg ctor, getters only — writes go throug
 
 ## Related Code Files
 `{root}` = `/Users/kangourouuu/orca/workspaces/keyloop-unified-service-scheduler/tilefish`. Create:
-- `{root}/src/main/resources/db/migration/V1__schema.sql`, `{root}/src/main/resources/db/migration/V2__seed.sql`
+- `{root}/src/main/resources/db/migration/V1__create_schema.sql`, `{root}/src/main/resources/db/migration/V2__insert_seed_data.sql`
 - `{root}/src/main/java/com/keyloop/scheduler/catalog/{DealershipEntity,ServiceTypeEntity,ServiceBayEntity,TechnicianEntity,CustomerEntity,VehicleEntity}.java`
 - `{root}/src/main/java/com/keyloop/scheduler/catalog/{DealershipRepository,ServiceTypeRepository,ServiceBayRepository,TechnicianRepository,CustomerRepository,VehicleRepository}.java`
 - `{root}/src/main/java/com/keyloop/scheduler/appointment/{AppointmentEntity,AppointmentStatus,AppointmentRepository}.java`
@@ -118,7 +118,7 @@ Modify:
    - **concurrent (early release-gate signal):** two `DataSource` connections in try-with-resources, `autoCommit=false`, start latch, each thread inserts an overlapping row on the same bay (distinct tech/vehicle) and commits; `future.get(10, SECONDS)` → exactly one commits, the other fails with SQLState `23P01` or `40P01`; one CONFIRMED row remains
    - one `request_audit` row at fixed `2000-01-01T00:00:00Z` → lands in `request_audit_default` (fixed date stays valid after phase 07 creates daily partitions); deleted in `finally`
 2. No `SeedDataIT`: seed counts are locked by the burst ITs (exact K), the `skillCodes` mapping is proven by `CatalogApiIT` (phase 04) and `ddl-auto: validate` on startup.
-3. Write `V1__schema.sql`, `V2__seed.sql`. Run `./mvnw verify` → log shows `Successfully applied 2 migrations`.
+3. Write `V1__create_schema.sql`, `V2__insert_seed_data.sql`. Run `./mvnw verify` → log shows `Successfully applied 2 migrations`.
 4. Entities + repositories (plain `JpaRepository<…, UUID>` / `<…, String>`; query methods come in phases 04–06).
 5. `./mvnw verify` green.
 
