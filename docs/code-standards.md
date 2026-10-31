@@ -231,3 +231,12 @@ AppointmentDto book(BookAppointmentDto request, String idempotencyKey);
 ```
 
 No `ponytail:` marker comments: deliberate shortcuts and their ceilings go in the plan or `docs/system-design.md`. This rule is checked in code review, not by Checkstyle.
+
+## 4. Schema changes: Flyway only
+
+Every table change (create, alter, drop, index, constraint, seed data) is a versioned Flyway migration in `src/main/resources/db/migration/V<n>__<description>.sql`. Flyway records each one in its own `flyway_schema_history` table and checks its checksum on every start.
+
+- Hibernate never touches the schema: `spring.jpa.hibernate.ddl-auto=validate` and `spring.jpa.generate-ddl=false`. Startup fails if an `*Entity` and its table drift apart.
+- A committed migration is never edited. To change something, add the next `V<n+1>__...sql`.
+- `spring.flyway.clean-disabled=true`, so nothing can wipe the database.
+- Only exception: the audit maintenance job creates tomorrow's `request_audit` day partitions and drops ones older than 14 days at runtime. It never changes columns, indexes or constraints, because partitions inherit those from the parent table that Flyway created.

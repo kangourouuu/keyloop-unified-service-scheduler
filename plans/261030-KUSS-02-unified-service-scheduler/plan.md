@@ -57,6 +57,7 @@ Binding for KUSS-04, full text in `docs/code-standards.md` and `.claude/rules/ja
 - Entities use Lombok `@Getter @Setter @Builder` + protected no-args / private all-args constructors, never `@Data`.
 - Own domain types (entities, DTOs, value objects) are built with `X.builder()...build()`, never `new X(params)`; JDK/framework types and exceptions keep `new`.
 - Mapping lives in MapStruct `*Mapper` interfaces (`componentModel = "spring"`), never inside DTOs (no `from(...)` / `toEntity()`).
+- Every schema change goes through a Flyway versioned migration (`flyway_schema_history` tracks them). `ddl-auto: validate` + `generate-ddl: false`, so Hibernate never changes tables; `clean-disabled: true`. A committed migration is never edited. Single exception: phase 07's maintenance job creates and drops `request_audit` day partitions at runtime (data lifecycle, like pg_partman); it never alters columns, indexes or constraints, which partitions inherit from the Flyway-created parent.
 
 ## Draft corrections (C-017 gaps → resolution → phase)
 | C-017 | Resolution | Phase |

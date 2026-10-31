@@ -19,7 +19,7 @@
 
 ## Requirements
 - Functional: schema per draft §6 + idempotency + partitioned audit; seed ≥2 dealerships in different non-UTC zones, bays (incl. one inactive), techs with distinct skills, service types 30/60/90/120, 3 customers, 24 vehicles; fixed UUIDs.
-- Non-functional: versioned Flyway migrations only (no hand-applied DDL); applied automatically on startup.
+- Non-functional: versioned Flyway migrations only (no hand-applied DDL); applied automatically on startup. Flyway tracks them in its own `flyway_schema_history` table. Hibernate never changes the schema (`ddl-auto: validate`, `generate-ddl: false`). A committed `V<n>__*.sql` is never edited: any change is a new migration. The only DDL outside Flyway is phase 07's `request_audit` day-partition create/drop. <!-- Updated: developer decision 2026-10-31 -->
 
 ## Architecture
 `V1__schema.sql` (core of it):

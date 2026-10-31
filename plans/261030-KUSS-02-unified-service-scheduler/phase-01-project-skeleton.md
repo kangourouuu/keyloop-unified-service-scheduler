@@ -64,7 +64,8 @@ Create (root `/Users/kangourouuu/orca/workspaces/keyloop-unified-service-schedul
      application.name: unified-service-scheduler
      threads.virtual.enabled: true
      datasource: { url: jdbc:postgresql://localhost:5432/kuss, username: kuss, password: kuss }
-     jpa: { open-in-view: false, hibernate.ddl-auto: validate }
+     jpa: { open-in-view: false, generate-ddl: false, hibernate.ddl-auto: validate }
+     flyway: { clean-disabled: true, validate-on-migrate: true, baseline-on-migrate: false }
    ---
    spring.config.activate.on-profile: prod
    logging.structured.format.console: ecs
