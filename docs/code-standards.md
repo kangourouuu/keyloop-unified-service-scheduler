@@ -17,6 +17,7 @@ These conventions override ponytail's "no interface with a single implementation
 | `*Mapper` | MapStruct interface, owns Entity ↔ Dto mapping |
 | `*GlobalHandler` | The single global exception handler |
 | `*Utils` | Static helpers |
+| `*Constants` | Shared constants in `common.constants` |
 | `*Test` | Unit test (Surefire) |
 | `*IT` | Integration test with Testcontainers (Failsafe) |
 
@@ -106,6 +107,22 @@ final class TimeSlotUtils {
     static boolean isOnHalfHourGrid(LocalTime time) { ... }
 }
 ```
+
+### Constants: messages and shared names in `common.constants`
+
+```java
+public final class ErrorMessageConstants {
+    public static final String BOOKING_NOT_COMPLETED = "Booking could not be completed.";
+    public static final String APPOINTMENT_NOT_FOUND = "Appointment not found.";
+
+    private ErrorMessageConstants() {}
+}
+```
+
+- Every error and `detail` message is a constant, even if it's used once.
+- So is every name read by more than one class: headers (`HeaderConstants`), request attribute and MDC keys (`RequestConstants`), metric names (`MetricConstants`).
+- A literal used in one class only stays `private static final` in that class.
+- SQL stays as `private static final` text blocks in its repository, next to the method that runs it.
 
 ### Test vs IT
 
@@ -231,3 +248,53 @@ AppointmentDto book(BookAppointmentDto request, String idempotencyKey);
 ```
 
 No `ponytail:` marker comments: deliberate shortcuts and their ceilings go in the plan or `docs/system-design.md`. This rule is checked in code review, not by Checkstyle.
+
+## 4. Schema changes: Flyway only
+
+Every table change (create, alter, drop, index, constraint, seed data) is a versioned Flyway migration in `src/main/resources/db/migration/`. Flyway records each one in its own `flyway_schema_history` table and checks its checksum on every start.
+
+- File name: `V<version>__<description>.sql`
+  - `<version>` is a sequential integer: `V1`, `V2`, `V3`. No gaps, no reuse.
+  - Two underscores separate the version from the description.
+  - `<description>` is lower snake_case and starts with a verb: `create`, `add`, `alter`, `drop`, `insert`, `rename`.
+
+  ```text
+  V1__create_schema.sql
+  V2__insert_seed_data.sql
+  V3__add_index_appointment_start_time.sql
+  // not: V3__Index.sql, V3_add_index.sql, V3__AddIndex.sql, V2.1__fix.sql
+  ```
+- Hibernate never touches the schema: `spring.jpa.hibernate.ddl-auto=validate` and `spring.jpa.generate-ddl=false`. Startup fails if an `*Entity` and its table drift apart.
+- A committed migration is never edited. To change something, add the next `V<version + 1>__<description>.sql`.
+- `spring.flyway.clean-disabled=true`, so nothing can wipe the database.
+- Only exception: the audit maintenance job creates tomorrow's `request_audit` day partitions and drops ones older than 14 days at runtime. It never changes columns, indexes or constraints, because partitions inherit those from the parent table that Flyway created.
+
+## 5. Formatting: Spotless
+
+Spotless formats the code and `./mvnw verify` runs `spotless:check`, which fails the build on any unformatted file. Run `./mvnw spotless:apply` before committing.
+
+| Files | Formatter |
+|---|---|
+| Java, main and test | google-java-format, plus unused imports removed and a fixed import order |
+| `pom.xml` | sortPom |
+| `db/migration/*.sql` | DBeaver SQL formatter |
+| `*.yml`, `docker-compose.yml` | Jackson YAML |
+| `README.md`, `docs/*.md` | flexmark (not `docs/brainstorm/`, `docs/agent-discussion/` or `plans/`) |
+
+- Formatter versions are pinned, so the same code always formats the same way.
+- Format a Flyway migration before its first commit. Reformatting it afterwards changes its checksum, and Flyway refuses to start.
+- Spotless runs before Checkstyle: the 20-line method limit is measured on formatted code.
+
+## Developer decisions log
+
+Each rule above that changed after the first version of this file keeps the agent's original selection here.
+
+- **Comments (§3).** Agent selection: comments only where intent isn't obvious, plus `ponytail:` markers. **Developer decision (after review, 2026-10-31):** no inline comments; Javadoc only, required on core business methods; no `ponytail:` markers; checked in review — overrides. **Reason:** names explain the code, Javadoc documents the contract.
+- **Test names (§1).** Agent selection: none. **Developer decision (after review, 2026-10-31):** snake_case `should_*` test methods, no `// given/when/then` — adds. **Reason:** the name states the expected behaviour.
+- **Entities (§1).** Agent selection: none (no Lombok). **Developer decision (after review, 2026-10-31):** `@Getter @Setter @Builder` + protected no-args / private all-args constructors, never `@Data` — adds. **Reason:** `@Data` breaks lazy loading and loops on relations.
+- **Object creation (§2).** Agent selection: constructors (`new AppointmentDto(...)`). **Developer decision (after review, 2026-10-31):** builders for own domain types; JDK/framework types and exceptions keep `new` — overrides. **Reason:** named fields read better than positional arguments.
+- **Mapping (§1).** Agent selection: "Put mapping in the record (`from(...)` / `toEntity()`), not in a separate mapper class." **Developer decision (after review, 2026-10-31):** MapStruct `*Mapper` interfaces own every Entity ↔ Dto mapping — overrides. **Reason:** DTOs stay pure data; mapping lives in one generated, testable place.
+- **Schema changes (§4).** Agent selection: Flyway migrations + `ddl-auto: validate`. **Developer decision (after review, 2026-10-31):** `validate` confirmed; every schema change via Flyway, `generate-ddl: false`, `clean-disabled: true`, never edit a committed migration, `request_audit` day partitions as the only runtime DDL — confirms + adds. **Reason:** one auditable schema history.
+- **Migration names (§4).** Agent selection: `V1__schema.sql`, `V2__seed.sql`. **Developer decision (after review, 2026-10-31):** `V<version>__<description>.sql`, sequential integer, verb-first lower snake_case — overrides. **Reason:** the file name says what the migration does.
+- **Constants (§1).** Agent selection: literals inline at each use, attribute keys inside `RequestAuditFilter`, SQL in repositories. **Developer decision (after review, 2026-10-31):** messages and shared names in `common.constants` `*Constants` classes; one-class literals stay private; SQL stays in repositories (confirms red-team #13) — overrides. **Reason:** one place per message and name, no drift between duplicates.
+- **Formatting (§5).** Agent selection: none (Checkstyle `MethodLength` only). **Developer decision (after review, 2026-10-31):** Spotless with google-java-format, imports, sortPom, SQL, YAML, Markdown; `check` fails `./mvnw verify` — adds. **Reason:** one format, enforced by the build.

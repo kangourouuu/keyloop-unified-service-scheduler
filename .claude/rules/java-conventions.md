@@ -16,6 +16,7 @@ Full rules with examples: `docs/code-standards.md`. These project conventions ov
 - `*Mapper` — MapStruct `@Mapper(componentModel = "spring")` interface; owns every Entity ↔ Dto mapping (`toDto`, `toEntity`)
 - `*GlobalHandler` — the single `@RestControllerAdvice` exception handler
 - `*Utils` — static helpers only (final class, private constructor)
+- `*Constants` — in `com.keyloop.scheduler.common.constants` (final class, private constructor): every error/detail message (`ErrorMessageConstants`) and every name used by 2+ classes (`HeaderConstants`, `RequestConstants`, `MetricConstants`). One-class literals stay `private static final` in that class; SQL stays in its repository
 - `*Test` — unit test (Surefire); `*IT` — integration test with Testcontainers (Failsafe)
 - Test methods: snake_case with prefix `should_` (`should_return_409_when_vehicle_already_booked`)
 
@@ -36,3 +37,8 @@ Full rules with examples: `docs/code-standards.md`. These project conventions ov
 - [ ] Javadoc (`/** */`) only, and required on core business methods: booking, availability, cancellation, idempotency, audit. Describe what the method guarantees and why, not how
 - [ ] No `ponytail:` marker comments; record deliberate shortcuts and their ceilings in the plan or docs
 - [ ] Checked in code review (not by Checkstyle)
+
+## Formatting
+
+- [ ] Spotless (google-java-format) must pass: run `./mvnw spotless:apply` before every commit; `./mvnw verify` fails on unformatted code
+- [ ] The 20-line limit counts lines after formatting
