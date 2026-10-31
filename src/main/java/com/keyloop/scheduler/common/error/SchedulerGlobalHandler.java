@@ -26,9 +26,15 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 @RestControllerAdvice
 class SchedulerGlobalHandler {
 
+  private static final String RETRY_AFTER_SECONDS = "1";
+
   @ExceptionHandler(SchedulerException.class)
   ResponseEntity<ProblemDetail> handleScheduler(SchedulerException ex, HttpServletRequest request) {
-    return respond(ex.getCode().status(), ex.getCode(), ex.getMessage(), request);
+    HttpHeaders headers = new HttpHeaders();
+    if (ex.getCode() == ErrorCode.KUSS_SERVICE_BUSY) {
+      headers.set(HttpHeaders.RETRY_AFTER, RETRY_AFTER_SECONDS);
+    }
+    return respond(ex.getCode().status(), ex.getCode(), ex.getMessage(), request, headers);
   }
 
   @ExceptionHandler(MissingRequestHeaderException.class)

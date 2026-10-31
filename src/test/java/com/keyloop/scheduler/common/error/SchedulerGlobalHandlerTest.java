@@ -60,6 +60,27 @@ class SchedulerGlobalHandlerTest {
   }
 
   @Test
+  void should_return_503_with_retry_after_when_service_is_busy() throws Exception {
+    MvcResult result =
+        mockMvc
+            .perform(get("/stub/codes/{code}", ErrorCode.KUSS_SERVICE_BUSY))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(header().string("Retry-After", "1"))
+            .andExpect(jsonPath("$.code").value("KUSS_SERVICE_BUSY"))
+            .andReturn();
+
+    assertThat(result.getRequest().getAttribute(RequestConstants.ERROR_CODE_ATTRIBUTE))
+        .isEqualTo("KUSS_SERVICE_BUSY");
+  }
+
+  @Test
+  void should_not_send_retry_after_for_other_scheduler_errors() throws Exception {
+    mockMvc
+        .perform(get("/stub/codes/{code}", ErrorCode.KUSS_NO_CAPACITY))
+        .andExpect(header().doesNotExist("Retry-After"));
+  }
+
+  @Test
   void should_return_400_idempotency_key_missing_when_header_absent() throws Exception {
     mockMvc
         .perform(post("/stub/booking"))

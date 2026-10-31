@@ -58,8 +58,6 @@ class AppointmentServiceImpl implements AppointmentService {
 
   private static final int MAX_ATTEMPTS = 100;
   private static final int TRANSACTION_TIMEOUT_SECONDS = 5;
-  private static final long DEADLOCK_BACKOFF_MILLIS = 100;
-  private static final int MAX_DEADLOCK_BACKOFF_SHIFT = 6;
   private static final String VEHICLE_OVERLAP_CONSTRAINT = "excl_appointment_vehicle_overlap";
   private static final String BAY_OVERLAP_CONSTRAINT = "excl_appointment_bay_overlap";
   private static final String CONFLICT_BAY = "bay";
@@ -75,6 +73,7 @@ class AppointmentServiceImpl implements AppointmentService {
           ErrorCode.KUSS_VALIDATION_FAILED.name(),
           ErrorCode.KUSS_RESOURCE_NOT_FOUND.name(),
           ErrorCode.KUSS_INTERNAL_ERROR.name(),
+          ErrorCode.KUSS_SERVICE_BUSY.name(),
           ErrorCode.KUSS_NO_CAPACITY.name(),
           ErrorCode.KUSS_VEHICLE_ALREADY_BOOKED.name(),
           ErrorCode.KUSS_IDEMPOTENCY_IN_FLIGHT.name(),
@@ -138,7 +137,9 @@ class AppointmentServiceImpl implements AppointmentService {
    * attempt runs in its own transaction with a fresh persistence context, so an
    * exclusion-constraint conflict is retried against a new snapshot until no free pair is left. A
    * vehicle already booked for an overlapping time is rejected before capacity is checked. A
-   * replayed Idempotency-Key returns the stored result.
+   * replayed Idempotency-Key returns the stored result. A request that finds no free database
+   * connection, or is still retrying 10 s after its first attempt, fails as service busy; its claim
+   * was rolled back, so the client can retry with the same key.
    */
   @Override
   public AppointmentResultDto book(BookAppointmentDto request, String idempotencyKey) {
@@ -187,15 +188,19 @@ class AppointmentServiceImpl implements AppointmentService {
   }
 
   private AppointmentResultDto bookWithRetry(BookAppointmentDto request, String idempotencyKey) {
-    for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    BookingDeadline deadline = BookingDeadline.startingNow(clock);
+    for (int attempt = 1; attempt <= MAX_ATTEMPTS && !deadline.isExpired(); attempt++) {
       try {
         return transactionTemplate.execute(status -> bookOnce(request, idempotencyKey));
       } catch (DataAccessException ex) {
-        handleConflict(ex, attempt);
+        handleConflict(ex, deadline, attempt < MAX_ATTEMPTS);
       } catch (CannotCreateTransactionException ex) {
         log.warn("Booking aborted, no database connection: {}", ex.getMessage());
-        throw bookingNotCompleted();
+        throw serviceBusy();
       }
+    }
+    if (deadline.isExpired()) {
+      throw deadlineReached();
     }
     log.error(
         "Booking retry cap {} reached, dealershipId={}", MAX_ATTEMPTS, request.dealershipId());
@@ -258,7 +263,8 @@ class AppointmentServiceImpl implements AppointmentService {
     return CandidateSelectionUtils.pick(freeBayIds, loads, ThreadLocalRandom.current());
   }
 
-  private void handleConflict(DataAccessException ex, int attempt) {
+  private void handleConflict(
+      DataAccessException ex, BookingDeadline deadline, boolean hasNextAttempt) {
     String constraint = SqlErrorUtils.constraintName(ex);
     String state = SqlErrorUtils.sqlState(ex);
     if (VEHICLE_OVERLAP_CONSTRAINT.equals(constraint)) {
@@ -268,23 +274,23 @@ class AppointmentServiceImpl implements AppointmentService {
       throw ex;
     }
     retryCounters.get(conflictType(constraint, state)).increment();
-    if (DEADLOCK_STATE.equals(state)) {
-      backOffAfterDeadlock(attempt);
+    if (DEADLOCK_STATE.equals(state) && hasNextAttempt) {
+      backOffAfterDeadlock(deadline);
     }
   }
 
   /**
-   * Waits before a deadlock victim retries. PostgreSQL breaks only one exclusion-index wait cycle
-   * per deadlock_timeout, so a victim that retried at once would insert a new conflicting index
-   * entry before the other waiters drain, and the cycle would never end. The wait starts at the
-   * deadlock_timeout, doubles with each attempt up to a cap, and is randomized so victims return
-   * spread out.
+   * Waits outside any transaction before a deadlock victim retries, for the randomized backoff that
+   * {@link BookingDeadline} paces. Gives up as service busy when that wait would pass the request
+   * deadline.
    */
-  private static void backOffAfterDeadlock(int attempt) {
-    long ceiling = DEADLOCK_BACKOFF_MILLIS << Math.min(attempt, MAX_DEADLOCK_BACKOFF_SHIFT);
-    long millis = ceiling / 2 + ThreadLocalRandom.current().nextLong(ceiling / 2 + 1);
+  private static void backOffAfterDeadlock(BookingDeadline deadline) {
+    Duration wait =
+        deadline
+            .nextDeadlockBackoff(ThreadLocalRandom.current())
+            .orElseThrow(AppointmentServiceImpl::deadlineReached);
     try {
-      Thread.sleep(millis);
+      Thread.sleep(wait);
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
       throw bookingNotCompleted();
@@ -414,6 +420,15 @@ class AppointmentServiceImpl implements AppointmentService {
   private static SchedulerException bookingNotCompleted() {
     return new SchedulerException(
         ErrorCode.KUSS_INTERNAL_ERROR, ErrorMessageConstants.BOOKING_NOT_COMPLETED);
+  }
+
+  private static SchedulerException serviceBusy() {
+    return new SchedulerException(ErrorCode.KUSS_SERVICE_BUSY, ErrorMessageConstants.SERVICE_BUSY);
+  }
+
+  private static SchedulerException deadlineReached() {
+    log.warn("Booking deadline reached, giving up as service busy");
+    return serviceBusy();
   }
 
   private static SchedulerException vehicleAlreadyBooked() {
