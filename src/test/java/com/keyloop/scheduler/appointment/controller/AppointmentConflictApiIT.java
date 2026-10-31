@@ -42,13 +42,7 @@ class AppointmentConflictApiIT extends AppointmentApiSupport {
         .isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(cancel(UUID.randomUUID(), "k-cancel-missing").getStatusCode())
         .isEqualTo(HttpStatus.NOT_FOUND);
-    assertThat(
-            get(ApiPathConstants.DEALERSHIPS
-                    + "/"
-                    + UUID.randomUUID()
-                    + "/appointments?date="
-                    + sevenDaysAhead())
-                .getStatusCode())
+    assertThat(dayList(UUID.randomUUID(), sevenDaysAhead()).getStatusCode())
         .isEqualTo(HttpStatus.NOT_FOUND);
   }
 

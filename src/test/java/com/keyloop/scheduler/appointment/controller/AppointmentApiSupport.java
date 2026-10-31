@@ -32,12 +32,11 @@ abstract class AppointmentApiSupport extends IntegrationTestSupport {
   }
 
   protected ResponseEntity<String> dayList(LocalDate date) {
-    return get(
-        ApiPathConstants.DEALERSHIPS
-            + "/"
-            + SeedIds.LONDON_DEALERSHIP_ID
-            + "/appointments?date="
-            + date);
+    return dayList(SeedIds.LONDON_DEALERSHIP_ID, date);
+  }
+
+  protected ResponseEntity<String> dayList(UUID dealershipId, LocalDate date) {
+    return get(ApiPathConstants.DEALERSHIPS + "/" + dealershipId + "/appointments?date=" + date);
   }
 
   protected void assertValidationFailed(ResponseEntity<String> response) {

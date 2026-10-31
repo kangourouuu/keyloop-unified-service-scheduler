@@ -21,7 +21,7 @@ class CatalogApiIT extends IntegrationTestSupport {
 
   @Test
   void should_list_only_the_four_active_service_types() {
-    assertThat(jsonOf("/api/v1/service-types").size()).isEqualTo(4);
+    assertThat(jsonOf(ApiPathConstants.SERVICE_TYPES).size()).isEqualTo(4);
   }
 
   @Test
@@ -59,7 +59,7 @@ class CatalogApiIT extends IntegrationTestSupport {
 
   @Test
   void should_list_customers_with_vehicles_exposing_only_public_fields() {
-    JsonNode customers = jsonOf("/api/v1/customers");
+    JsonNode customers = jsonOf(ApiPathConstants.CUSTOMERS);
 
     assertThat(customers.size()).isEqualTo(3);
     JsonNode customer = customers.get(0);

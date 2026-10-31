@@ -20,14 +20,7 @@ class AppointmentReadApiIT extends AppointmentApiSupport {
     cancel(UUID.fromString(early), "k-early-cancel");
 
     ResponseEntity<String> single = get(ApiPathConstants.APPOINTMENTS + "/" + late);
-    JsonNode day =
-        jsonMapper.readTree(
-            get(ApiPathConstants.DEALERSHIPS
-                    + "/"
-                    + SeedIds.LONDON_DEALERSHIP_ID
-                    + "/appointments?date="
-                    + sevenDaysAhead())
-                .getBody());
+    JsonNode day = jsonMapper.readTree(dayList(sevenDaysAhead()).getBody());
 
     assertThat(single.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(id(single)).isEqualTo(late);
