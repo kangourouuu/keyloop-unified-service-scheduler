@@ -260,3 +260,9 @@ Applied three wording fixes to `docs/brainstorm/first-draft-high-level.md` follo
 1. **§11 #9 (lines 506–507):** Stated the consequence of no auth: anyone can read all data and cancel any appointment; auth and per-dealership scoping are roadmap; there is no rate limiting.
 2. **§8 `GET /api/v1/customers` (line 410):** Specified that vehicles are returned as id, make, model, modelYear only (no VIN, no plate).
 3. **§7.4 & §12 audit scope (lines 391, 542):** Updated audit scope from `"/api/**"` to all paths except actuator and API docs (matched on the normalized servlet path).
+
+
+## A-026 · 2026-10-31 10:55 · Developer decision: Flyway schema migrations & partition DDL isolation
+Re: — · Status: answered
+Recorded developer decision regarding Flyway schema migrations and partition DDL isolation in `docs/brainstorm/first-draft-high-level.md` at §6 item 6 (line 270) and §12 (line 544):
+- **Developer decision (after review, 2026-10-31):** every schema change goes through Flyway versioned migrations (tracked in flyway_schema_history); Hibernate ddl-auto=validate with generate-ddl=false, so Hibernate never changes tables; a committed migration is never edited. The only DDL outside Flyway is the runtime maintenance job creating and dropping request_audit day partitions (data lifecycle, like pg_partman); it never alters columns, indexes or constraints — adds. Reason: one auditable source of schema history; daily partitions cannot be versioned migrations.

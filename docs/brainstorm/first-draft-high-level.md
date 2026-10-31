@@ -267,6 +267,7 @@ erDiagram
    - **Agent selection:** none (not in the draft)
    - **Developer decision (after review, 2026-10-30):** Add dedicated `request_audit` table partitioned daily with BRIN index and 14-day rolling retention — adds
    - **Reason:** Provide request auditing for incident investigation across all API endpoints without blocking request execution.
+   - **Developer decision (after review, 2026-10-31):** every schema change goes through Flyway versioned migrations (tracked in flyway_schema_history); Hibernate ddl-auto=validate with generate-ddl=false, so Hibernate never changes tables; a committed migration is never edited. The only DDL outside Flyway is the runtime maintenance job creating and dropping request_audit day partitions (data lifecycle, like pg_partman); it never alters columns, indexes or constraints — adds. Reason: one auditable source of schema history; daily partitions cannot be versioned migrations.
    - **Partition Management & Sizing:**
      - Table `request_audit` is partitioned by day (`PARTITION BY RANGE (timestamp)`).
      - A `DEFAULT` partition (`CREATE TABLE request_audit_default PARTITION OF request_audit DEFAULT;`) acts as a safety net ensuring writes succeed even if future partitions are delayed.
@@ -540,6 +541,7 @@ To make review effortless, here is what we explicitly agreed in chat versus defa
 - **Developer decision (after review, 2026-10-30):** Add dedicated `request_audit` table partitioned daily with BRIN index, 14-day rolling retention, and off-critical-path async write — adds
 - **Reason:** Provide request auditing for incident investigation across all API endpoints without blocking request execution.
 - **Developer decision (after review, 2026-10-31):** audit scope "/api/**" becomes "all paths except actuator and API docs" (matched on the normalized servlet path) — overrides. Reason: red-team finding #10.
+- **Developer decision (after review, 2026-10-31):** every schema change goes through Flyway versioned migrations (tracked in flyway_schema_history); Hibernate ddl-auto=validate with generate-ddl=false, so Hibernate never changes tables; a committed migration is never edited. The only DDL outside Flyway is the runtime maintenance job creating and dropping request_audit day partitions (data lifecycle, like pg_partman); it never alters columns, indexes or constraints — adds. Reason: one auditable source of schema history; daily partitions cannot be versioned migrations.
 
 ### Error Handling & Prefixed Error Codes (KUSS_*)
 - **Agent selection:** RFC 9457 ProblemDetail errors (§1 line 47, §3 line 47, §5 line 145) with no error-code catalog and no global handler
