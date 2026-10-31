@@ -51,14 +51,20 @@ Never cut: any Test map row, `BookingConcurrencyIT`, the vehicle precheck, idemp
 - Extra read endpoints + cancel; no auth; request signing roadmap only; no Redis/RabbitMQ/WebSocket in code or compose.
 
 ## Conventions added after validation (developer decisions, 2026-10-31)
-Binding for KUSS-04, full text in `docs/code-standards.md` and `.claude/rules/java-conventions.md`:
-- No inline comments (`//`, `/* */`) in main or test code; descriptive Javadoc only, required on core business methods (booking, availability, cancellation, idempotency, audit). No `ponytail:` marker comments: shortcuts are recorded in this plan (Out of scope) or docs. The `//` notes inside this plan's code snippets are for the reader only; don't copy them into code.
-- Test methods are snake_case with prefix `should_` (`should_return_409_when_vehicle_already_booked`), no `// given/when/then`.
-- Entities use Lombok `@Getter @Setter @Builder` + protected no-args / private all-args constructors, never `@Data`.
-- Own domain types (entities, DTOs, value objects) are built with `X.builder()...build()`, never `new X(params)`; JDK/framework types and exceptions keep `new`.
-- Mapping lives in MapStruct `*Mapper` interfaces (`componentModel = "spring"`), never inside DTOs (no `from(...)` / `toEntity()`).
-- Formatting: Spotless `check` fails `./mvnw verify` (run `./mvnw spotless:apply` before committing). google-java-format for Java main + test, unused imports removed, fixed import order, `sortPom`, Flyway SQL, YAML, and Markdown (not `docs/brainstorm`, `docs/agent-discussion`, `plans`). Never reformat an applied migration (checksum).
-- Every schema change goes through a Flyway versioned migration (`flyway_schema_history` tracks them). `ddl-auto: validate` + `generate-ddl: false`, so Hibernate never changes tables; `clean-disabled: true`. A committed migration is never edited. Single exception: phase 07's maintenance job creates and drops `request_audit` day partitions at runtime (data lifecycle, like pg_partman); it never alters columns, indexes or constraints, which partitions inherit from the Flyway-created parent.
+Binding for KUSS-04. Full text: `docs/code-standards.md` (§1–§5 and its Developer decisions log) and `.claude/rules/java-conventions.md`.
+
+| # | Topic | Agent selection | Developer decision (after review, 2026-10-31) | Reason |
+|---|---|---|---|---|
+| 1 | Comments | `development-rules.md`: comments only where intent isn't obvious, plus `ponytail:` markers for deliberate shortcuts | No inline comments (`//`, `/* */`) in main or test code; descriptive Javadoc only, required on core business methods (booking, availability, cancellation, idempotency, audit); no `ponytail:` markers, shortcuts go in this plan (Out of scope) or docs; checked in review, not by Checkstyle. **Overrides** | Names explain the code; Javadoc documents the contract |
+| 2 | Test method names | none (plan used camelCase, e.g. `contextLoads()`) | snake_case with prefix `should_` (`should_return_409_when_vehicle_already_booked`), no `// given/when/then`. **Adds** | The name states the expected behaviour |
+| 3 | Entities | none (plain JPA entities, no Lombok) | Lombok `@Getter @Setter @Builder` + protected no-args / private all-args constructors; never `@Data`, `@EqualsAndHashCode`, `@ToString`. **Adds** | `@Data` breaks lazy loading and loops on relations |
+| 4 | Object creation | constructors / record canonical constructors (`new AppointmentResultDto(201, …)`) | Own domain types (entities, DTOs, value objects) via `X.builder()…build()`; JDK/framework types and exceptions keep `new`. **Overrides** | Named fields read better than positional arguments |
+| 5 | Mapping | `*Dto` records own the mapping (`static from(XEntity)`, `toEntity()`) | MapStruct `*Mapper` interfaces (`componentModel = "spring"`); no mapping code inside DTOs. **Overrides** | DTOs stay pure data; mapping is generated and testable in one place |
+| 6 | Formatting | none (Checkstyle `MethodLength` only) | Spotless `check` fails `./mvnw verify`: google-java-format (main + test), unused imports, import order, `sortPom`, Flyway SQL, YAML, Markdown (not `docs/brainstorm`, `docs/agent-discussion`, `plans`). **Adds** | One format for everyone, enforced by the build |
+| 7 | Schema changes | Flyway `V1`/`V2` + `ddl-auto: validate` (phases 01–02) | `validate` **confirmed**; **adds** `generate-ddl: false`, `clean-disabled: true`, never edit a committed migration, every schema change via Flyway; only exception: phase 07's job creating/dropping `request_audit` day partitions (never alters columns, indexes, constraints) | One auditable source of schema history; daily partitions cannot be versioned migrations |
+| 8 | Migration file names | `V1__schema.sql`, `V2__seed.sql` | `V<version>__<description>.sql`: sequential integer, lower snake_case description starting with a verb (`V1__create_schema.sql`, `V2__insert_seed_data.sql`). **Overrides** | The file name says what the migration does |
+
+The `//` notes inside this plan's code snippets are for the reader only; don't copy them into code.
 
 ## Draft corrections (C-017 gaps → resolution → phase)
 | C-017 | Resolution | Phase |

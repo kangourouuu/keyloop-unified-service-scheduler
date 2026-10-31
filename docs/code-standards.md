@@ -267,3 +267,16 @@ Spotless formats the code and `./mvnw verify` runs `spotless:check`, which fails
 - Formatter versions are pinned, so the same code always formats the same way.
 - Format a Flyway migration before its first commit. Reformatting it afterwards changes its checksum, and Flyway refuses to start.
 - Spotless runs before Checkstyle: the 20-line method limit is measured on formatted code.
+
+## Developer decisions log
+
+Each rule above that changed after the first version of this file keeps the agent's original selection here.
+
+- **Comments (§3).** Agent selection: comments only where intent isn't obvious, plus `ponytail:` markers. **Developer decision (after review, 2026-10-31):** no inline comments; Javadoc only, required on core business methods; no `ponytail:` markers; checked in review — overrides. **Reason:** names explain the code, Javadoc documents the contract.
+- **Test names (§1).** Agent selection: none. **Developer decision (after review, 2026-10-31):** snake_case `should_*` test methods, no `// given/when/then` — adds. **Reason:** the name states the expected behaviour.
+- **Entities (§1).** Agent selection: none (no Lombok). **Developer decision (after review, 2026-10-31):** `@Getter @Setter @Builder` + protected no-args / private all-args constructors, never `@Data` — adds. **Reason:** `@Data` breaks lazy loading and loops on relations.
+- **Object creation (§2).** Agent selection: constructors (`new AppointmentDto(...)`). **Developer decision (after review, 2026-10-31):** builders for own domain types; JDK/framework types and exceptions keep `new` — overrides. **Reason:** named fields read better than positional arguments.
+- **Mapping (§1).** Agent selection: "Put mapping in the record (`from(...)` / `toEntity()`), not in a separate mapper class." **Developer decision (after review, 2026-10-31):** MapStruct `*Mapper` interfaces own every Entity ↔ Dto mapping — overrides. **Reason:** DTOs stay pure data; mapping lives in one generated, testable place.
+- **Schema changes (§4).** Agent selection: Flyway migrations + `ddl-auto: validate`. **Developer decision (after review, 2026-10-31):** `validate` confirmed; every schema change via Flyway, `generate-ddl: false`, `clean-disabled: true`, never edit a committed migration, `request_audit` day partitions as the only runtime DDL — confirms + adds. **Reason:** one auditable schema history.
+- **Migration names (§4).** Agent selection: `V1__schema.sql`, `V2__seed.sql`. **Developer decision (after review, 2026-10-31):** `V<version>__<description>.sql`, sequential integer, verb-first lower snake_case — overrides. **Reason:** the file name says what the migration does.
+- **Formatting (§5).** Agent selection: none (Checkstyle `MethodLength` only). **Developer decision (after review, 2026-10-31):** Spotless with google-java-format, imports, sortPom, SQL, YAML, Markdown; `check` fails `./mvnw verify` — adds. **Reason:** one format, enforced by the build.
