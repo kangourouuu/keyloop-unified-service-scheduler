@@ -272,3 +272,46 @@ Recorded developer decision regarding Flyway schema migrations and partition DDL
 Re: — · Status: answered
 Recorded developer decision regarding lock ordering under heavy burst contention in `docs/brainstorm/first-draft-high-level.md` §10 (line 493):
 - Lock ordering before insert (pessimistic locks on the chosen bay, then technician, always in that order) to remove exclusion-index deadlocks under heavy bursts. Developer decision (after review, 2026-10-31): roadmap for scaling only; V1 keeps EXCLUDE + retry; trigger = scheduler.booking.gist_retries{conflict_type=deadlock} climbing under real load — adds. Reason: V1 correctness is guaranteed by the constraints; whole-resource locks would serialize unrelated time ranges.
+
+
+## A-028 · 2026-10-31 15:45 · KUSS-04 cross-review consensus — alignment table and findings agreed
+Re: C-023 · Status: resolved
+
+Completed independent cross-review of the KUSS-04 implementation (`git log ea27bb9..HEAD`, `6b921cc`..`5e23630`) and the alignment report `plans/261030-KUSS-02-unified-service-scheduler/reports/review-261031-kuss04-alignment.md`. Concur with the 77-row alignment table (70 ALIGNED, 5 PARTIAL, 0 DEVIATION, 2 N-A) and all findings (0 Critical, 1 High, 2 Medium, 9 Low).
+
+### Answers to C-023 Questions:
+1. **Q1 (H-1 severity & fix):** Concur with **High**. Unauthenticated callers supplying arbitrary `serviceTypeCode` strings on idempotency mismatch/in-flight error paths creates an unbounded Prometheus tag cardinality vector. The fix is to remove `KUSS_IDEMPOTENCY_IN_FLIGHT` and `KUSS_IDEMPOTENCY_KEY_MISMATCH` from `TRACKED_SERVICE_TYPE_RESULTS` in `AppointmentServiceImpl.java:82-88`. They will record as `service_type="unknown"`, which is semantically correct (transport/idempotency errors are not capacity metrics) and zero-overhead.
+2. **Q2 (A-5 PARTIAL):** Concur that **PARTIAL is fair**. Coupling the backoff exponent to `attempt` rather than a dedicated `deadlockCount` inflates backoff excessively if preceded by bay/tech conflicts (`23P01`). Furthermore, sleeping after the final attempt (`attempt == MAX_ATTEMPTS`) adds useless latency before aborting, and an overall deadline (e.g. 10s) is missing.
+3. **Q3 (Hibernate statement timeout):** Agreed. Spring's `JpaTransactionManager` sets transaction timeout on the Hibernate Session, which applies `Statement.setQueryTimeout()` to JDBC statements. The PostgreSQL driver (`pgjdbc`) enforces query timeouts via out-of-band `CancelQuery` packets, causing PostgreSQL backend to cancel statement execution (SQLSTATE `57014`) even when blocked on a GiST exclusion lock. An EXCLUDE wait cannot outlive the 5s timeout.
+4. **Q4 (Decision row statuses):** Concur with all statuses as assigned:
+   - **RT-4 (ALIGNED with L-3):** Red Team finding #4 specifically targeted the booking retry path (P1, P5). Adding `@Transactional(timeout = 5)` to `cancel()` in `AppointmentServiceImpl.java:342` is good hygiene (L-3).
+   - **A-11 (ALIGNED with L-2):** Design draft §6.7 explicitly specified `DELETE FROM idempotency_key WHERE created_at < now() - INTERVAL '24 hours'` running on a daily scheduled job. A 24–48h window before the next scheduled purge is the exact planned behavior.
+   - **C-9 (PARTIAL with L-9):** Convention 9 mandates shared literals in `*Constants`. `/api/v1/appointments` repeated across 3 classes is properly classified as PARTIAL.
+5. **Q5 (Timezone/DST & Idempotency races):** No defects found in timezone/DST or idempotency races:
+   - `TimeSlotUtils.candidateStarts` resolves `open` in dealership `ZoneId` and steps 30m intervals forward, correctly handling DST transitions.
+   - `IdempotencyServiceImpl` correctly maps PK unique conflict to `409 KUSS_IDEMPOTENCY_IN_FLIGHT` for simultaneous losers, strictly fulfilling §12 Scenario 6.
+   - Concur with **M-2**: Wrapping the audit task in `RequestAuditFilter.java:87-93` (`() -> { try { requestAuditService.write(audit); } catch (Exception ex) { requestAuditService.reject(audit); } }`) ensures connection/commit failures in the `REQUIRES_NEW` proxy increment `failures` and log the `requestId`.
+
+Decision: Antigravity agrees with the KUSS-04 decision alignment table (70 ALIGNED, 5 PARTIAL, 0 DEVIATION, 2 N-A) and code findings (0 Critical, 1 High, 2 Medium, 9 Low) in `plans/261030-KUSS-02-unified-service-scheduler/reports/review-261031-kuss04-alignment.md`. All Scenario A requirements, approved design decisions, and Java conventions are satisfied with no deviations.
+
+
+## A-029 · 2026-10-31 15:55 · Fix list agreed & Q6-Q9 resolved (DD-1, DD-2)
+Re: C-025 · Status: resolved
+
+Reviewed developer decisions DD-1 and DD-2, the fix list F-1..F-8, and the documentation routing table.
+
+### Answers to C-025 Questions:
+1. **Q6 (`AppointmentServiceImpl.java:60,191-205`):** Allowing the final attempt to complete with its standard 5s timeout (~15s worst-case ceiling from $t=0$) is completely acceptable. Mutating `transactionTemplate.setTimeout()` dynamically per call on a shared singleton bean is NOT thread-safe across concurrent virtual threads. Checking `now.isAfter(deadline)` prior to starting each attempt and before sleeping provides a clean, thread-safe, and deterministic guard.
+2. **Q7 (`SchedulerGlobalHandler.java:29-32,131-148`, `HeaderConstants.java`):** A fixed `Retry-After: 1` is completely fine and aligns with standard HTTP practices. With Hikari connection timeout at 3s and short transaction durations (<100ms), 1 second gives ample headroom for pool queues to drain without introducing dynamic header complexity. Ensure `SchedulerGlobalHandler` returns a `ResponseEntity<ProblemDetail>` so the HTTP response header is transmitted properly.
+3. **Q8 (`AppointmentServiceImpl.java:72-88,160-166`):** Agree 100%. `KUSS_SERVICE_BUSY` can be raised on `CannotCreateTransactionException` (pool exhaustion) or deadline expiration before service-type qualification runs. Excluding it from `TRACKED_SERVICE_TYPE_RESULTS` (so it records as `service_type="unknown"`) guarantees that unvalidated client input never leaks into Prometheus series tags.
+4. **Q9 (`docs/brainstorm/first-draft-high-level.md:437-448,462,540-545`):** Documentation routing is complete. In addition to the files listed in the report, note that `docs/visualization/kuss-design.html` (KUSS-03) references the error catalog, but the live design source is `first-draft-high-level.md` and `system-design.md`. Antigravity will record DD-1 and DD-2 in `first-draft-high-level.md` (§8.1, §9, §12).
+
+Decision: Antigravity agrees with developer decisions DD-1 and DD-2 and approves the fix list F-1..F-8 (`plans/261030-KUSS-02-unified-service-scheduler/reports/review-261031-kuss04-alignment.md`). The plan is ready for the fix worker to implement.
+
+
+## A-030 · 2026-10-31 16:05 · Developer decisions recorded: DD-1, DD-2, metrics tagging & error catalog
+Re: — · Status: answered
+Recorded developer decisions (after review, 2026-10-31) in `docs/brainstorm/first-draft-high-level.md`:
+1. **§8 Error Code Catalog (lines 449–450):** Added `KUSS_SERVICE_BUSY` (503 Service Unavailable, Retry-After header) on overload (DB pool exhausted or 10 s deadline reached) — adds. Reason: tell clients to retry later instead of reporting an internal error. Noted on `KUSS_INTERNAL_ERROR` that 'no DB connection' now maps to `KUSS_SERVICE_BUSY` — overrides.
+2. **§9 Metrics (line 466):** Result tag set includes `KUSS_SERVICE_BUSY`; idempotency error results are tagged `service_type='unknown'` — adds. Reason: reflect 503 overload outcomes in booking metrics, and standardize unparsed payload metric tagging where service type is unknown.
+3. **§12 Decisions Summary (lines 537, 556):** Recorded DD-1 ('10 s wall-clock deadline per booking request (40P01 backoff bounded)' — adds) and DD-2 ('503 + Retry-After with KUSS_SERVICE_BUSY on overload instead of 500' — overrides).

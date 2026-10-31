@@ -9,6 +9,9 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring", imports = RequestAuditKey.class)
 public interface RequestAuditMapper {
 
-  @Mapping(target = "key", expression = "java(new RequestAuditKey(audit.id(), audit.occurredAt()))")
+  @Mapping(
+      target = "key",
+      expression =
+          "java(RequestAuditKey.builder().id(audit.id()).occurredAt(audit.occurredAt()).build())")
   RequestAuditEntity toEntity(RequestAuditDto audit);
 }

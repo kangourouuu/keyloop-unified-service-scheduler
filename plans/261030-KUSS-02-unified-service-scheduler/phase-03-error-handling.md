@@ -28,6 +28,7 @@
 | anything else | 500 | `KUSS_INTERNAL_ERROR`, fixed detail, `log.error` with stack |
 
 - Non-functional: no stack trace, class name or SQL in `detail`; every 4xx detail is a fixed string or our own `SchedulerException` text (field names + constraint messages for validation lists); handler sets request attribute `kuss_error_code`. <!-- Updated: Red Team #9 -->
+- **Developer decision (after review, 2026-10-31):** DD-2: new code `KUSS_SERVICE_BUSY` (503) after `KUSS_INTERNAL_ERROR`; the `SchedulerException` handler adds `Retry-After: 1` for it — adds. Reason: booking overload (no free connection or the 10 s deadline of DD-1) is temporary and retryable.
 
 ## Architecture
 ```java
@@ -40,7 +41,7 @@ public enum ErrorCode {
     KUSS_IDEMPOTENCY_IN_FLIGHT(HttpStatus.CONFLICT),
     KUSS_APPOINTMENT_ALREADY_STARTED(HttpStatus.CONFLICT),
     KUSS_IDEMPOTENCY_KEY_MISMATCH(HttpStatus.UNPROCESSABLE_CONTENT), // 422; use UNPROCESSABLE_ENTITY if the constant is absent
-    KUSS_INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);
+    KUSS_INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR); <!-- Superseded: developer decision 2026-10-31 (DD-1/DD-2, review) -->
     // ctor + status() getter
 }
 ```

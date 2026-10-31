@@ -19,6 +19,7 @@ import com.keyloop.scheduler.catalog.entity.VehicleEntity;
 import com.keyloop.scheduler.catalog.repository.DealershipRepository;
 import com.keyloop.scheduler.catalog.repository.ServiceTypeRepository;
 import com.keyloop.scheduler.catalog.repository.VehicleRepository;
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
 import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
 import com.keyloop.scheduler.common.constants.MetricConstants;
 import com.keyloop.scheduler.common.error.ErrorCode;
@@ -415,7 +416,7 @@ class AppointmentServiceImpl implements AppointmentService {
   }
 
   private static String cancelRequest(UUID appointmentId) {
-    return "POST /api/v1/appointments/" + appointmentId + "/cancel";
+    return "POST " + ApiPathConstants.APPOINTMENTS + "/" + appointmentId + "/cancel";
   }
 
   private static SchedulerException appointmentNotFound() {
@@ -424,7 +425,9 @@ class AppointmentServiceImpl implements AppointmentService {
   }
 
   private static String canonicalRequest(BookAppointmentDto request) {
-    return "POST /api/v1/appointments|"
+    return "POST "
+        + ApiPathConstants.APPOINTMENTS
+        + "|"
         + request.dealershipId()
         + "|"
         + request.vehicleId()

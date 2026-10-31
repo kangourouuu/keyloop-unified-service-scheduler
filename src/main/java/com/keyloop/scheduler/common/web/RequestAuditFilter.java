@@ -2,6 +2,7 @@ package com.keyloop.scheduler.common.web;
 
 import com.keyloop.scheduler.audit.dto.RequestAuditDto;
 import com.keyloop.scheduler.audit.service.RequestAuditService;
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
 import com.keyloop.scheduler.common.constants.HeaderConstants;
 import com.keyloop.scheduler.common.constants.RequestConstants;
 import jakarta.servlet.FilterChain;
@@ -35,7 +36,6 @@ class RequestAuditFilter extends OncePerRequestFilter {
   private static final List<String> UNAUDITED_PREFIXES =
       List.of("/actuator/", "/v3/api-docs", "/swagger-ui");
   private static final String BOOKING_METHOD = "POST";
-  private static final String BOOKING_PATH = "/api/v1/appointments";
   private static final List<String> BOOKING_PAYLOAD_FIELDS =
       List.of("dealershipId", "vehicleId", "serviceTypeCode", "desiredStartTime");
   private static final int PAYLOAD_CACHE_LIMIT = 4096;
@@ -120,7 +120,7 @@ class RequestAuditFilter extends OncePerRequestFilter {
 
   private String payloadOf(ContentCachingRequestWrapper request) {
     if (!BOOKING_METHOD.equals(request.getMethod())
-        || !BOOKING_PATH.equals(request.getServletPath())) {
+        || !ApiPathConstants.APPOINTMENTS.equals(request.getServletPath())) {
       return null;
     }
     return sanitize(request.getContentAsByteArray());

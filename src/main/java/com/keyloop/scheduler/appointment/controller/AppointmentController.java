@@ -4,6 +4,7 @@ import com.keyloop.scheduler.appointment.dto.AppointmentDto;
 import com.keyloop.scheduler.appointment.dto.AppointmentResultDto;
 import com.keyloop.scheduler.appointment.dto.BookAppointmentDto;
 import com.keyloop.scheduler.appointment.service.AppointmentService;
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
 import com.keyloop.scheduler.common.constants.HeaderConstants;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
@@ -29,7 +30,7 @@ class AppointmentController {
 
   private final AppointmentService appointmentService;
 
-  @PostMapping("/api/v1/appointments")
+  @PostMapping(ApiPathConstants.APPOINTMENTS)
   ResponseEntity<AppointmentDto> book(
       @RequestHeader(HeaderConstants.IDEMPOTENCY_KEY) @Pattern(regexp = IDEMPOTENCY_KEY_PATTERN)
           String idempotencyKey,
@@ -38,12 +39,12 @@ class AppointmentController {
     return ResponseEntity.status(result.httpStatus()).body(result.appointment());
   }
 
-  @GetMapping("/api/v1/appointments/{appointmentId}")
+  @GetMapping(ApiPathConstants.APPOINTMENTS + "/{appointmentId}")
   AppointmentDto getAppointment(@PathVariable UUID appointmentId) {
     return appointmentService.getAppointment(appointmentId);
   }
 
-  @PostMapping("/api/v1/appointments/{appointmentId}/cancel")
+  @PostMapping(ApiPathConstants.APPOINTMENTS + "/{appointmentId}/cancel")
   ResponseEntity<AppointmentDto> cancel(
       @PathVariable UUID appointmentId,
       @RequestHeader(HeaderConstants.IDEMPOTENCY_KEY) @Pattern(regexp = IDEMPOTENCY_KEY_PATTERN)
