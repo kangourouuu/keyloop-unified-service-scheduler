@@ -86,8 +86,16 @@ class RequestAuditFilter extends OncePerRequestFilter {
 
   private void submit(RequestAuditDto audit) {
     try {
-      auditExecutor.execute(() -> requestAuditService.write(audit));
+      auditExecutor.execute(() -> write(audit));
     } catch (RejectedExecutionException ex) {
+      requestAuditService.reject(audit);
+    }
+  }
+
+  private void write(RequestAuditDto audit) {
+    try {
+      requestAuditService.write(audit);
+    } catch (RuntimeException ex) {
       requestAuditService.reject(audit);
     }
   }
