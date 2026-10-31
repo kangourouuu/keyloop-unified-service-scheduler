@@ -48,7 +48,7 @@ explore edge cases → code-reviewer → fix → verify
 - **Request audit**: `request_audit` written async in its own transaction (`REQUIRES_NEW`), so rolled-back `409`/`500` are still audited; audit failures logged and swallowed; payload sanitized (no PII)
 - **Queries**: indexes for availability lookups, no N+1, pagination on lists
 - **API**: input validation at controller boundary, correct status codes (409 on conflict); all errors go through the single `*GlobalHandler` as RFC 9457 `ProblemDetail` with a `KUSS_*` `code` and `requestId`, with no stack traces or SQL in `detail`
-- **Conventions**: `.claude/rules/java-conventions.md` (naming suffixes, records for DTOs, methods ≤ 20 lines, no inline comments, Javadoc on core business methods, `should_*` snake_case test names)
+- **Conventions**: `.claude/rules/java-conventions.md` (naming suffixes, records for DTOs, methods ≤ 20 lines, builders for own domain types, MapStruct `*Mapper` (no mapping in DTOs), `@Getter @Setter` not `@Data` on entities, no inline comments, Javadoc on core business methods, `should_*` snake_case test names)
 - **Migrations**: forward-only, reversible-safe, no destructive change without note
 - **Observability**: structured logs with correlation id, metrics on booking success/conflict
 

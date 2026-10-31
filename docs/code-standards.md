@@ -2,7 +2,7 @@
 
 Java 21 + Spring Boot 4 conventions for the Unified Service Scheduler. Agents load the short checklist in `.claude/rules/java-conventions.md`; this file is the human-readable version with examples.
 
-These conventions override ponytail's "no interface with a single implementation" rule for `*Service` / `*ServiceImpl`, and its `ponytail:` marker comments (see §3). Ponytail (minimal code, no speculative abstraction) still applies everywhere else.
+These conventions override ponytail's "no interface with a single implementation" rule for `*Service` / `*ServiceImpl`, its "no new dependency" rule for Lombok and MapStruct, and its `ponytail:` marker comments (see §3). Ponytail (minimal code, no speculative abstraction) still applies everywhere else.
 
 ## 1. Naming: class suffix → role
 
@@ -13,7 +13,8 @@ These conventions override ponytail's "no interface with a single implementation
 | `*ServiceImpl` | Implementation of that interface |
 | `*Repository` | Spring Data JPA repository |
 | `*Entity` | JPA entity, lower snake_case table name |
-| `*Dto` | Java `record`, carries the DTO ↔ Entity mapping |
+| `*Dto` | Java `record` with `@Builder`, no mapping code |
+| `*Mapper` | MapStruct interface, owns Entity ↔ Dto mapping |
 | `*GlobalHandler` | The single global exception handler |
 | `*Utils` | Static helpers |
 | `*Test` | Unit test (Surefire) |
@@ -49,26 +50,41 @@ interface ServiceBayRepository extends JpaRepository<ServiceBayEntity, UUID> {
 }
 ```
 
-### Entity: lower snake_case table names via `@Table`
+### Entity: lower snake_case table names, Lombok `@Getter @Setter`, never `@Data`
 
 ```java
 @Entity
-@Table(name = "service_bay")   // also: technician_skill, request_audit
+@Table(name = "service_bay")
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 class ServiceBayEntity { ... }
 ```
 
-### Dto: always a `record`, owns the mapping
+`@Data` (and `@EqualsAndHashCode` / `@ToString`) on an entity builds equals, hashCode and toString from every field, which triggers lazy loads and loops on bidirectional relations. The protected no-args constructor is for JPA; the private all-args one is for `@Builder`. Other table names: `technician_skill`, `request_audit`.
+
+### Dto: always a `record` with `@Builder`, no mapping code
 
 ```java
-public record AppointmentDto(UUID id, UUID vehicleId, Instant startTime, String status) {
-    public static AppointmentDto from(AppointmentEntity entity) {
-        return new AppointmentDto(entity.getId(), entity.getVehicleId(),
-                entity.getStartTime(), entity.getStatus().name());
-    }
+@Builder
+public record AppointmentDto(UUID id, UUID vehicleId, Instant startTime, String status) {}
+```
+
+Never `class AppointmentDto`, and no `from(...)` / `toEntity()` inside the record: mapping belongs to a `*Mapper`.
+
+### Mapper: MapStruct, owns Entity ↔ Dto mapping
+
+```java
+@Mapper(componentModel = "spring")
+interface AppointmentMapper {
+    AppointmentDto toDto(AppointmentEntity entity);
+    AppointmentEntity toEntity(BookAppointmentDto request);
 }
 ```
 
-Never `class AppointmentDto`. Put mapping in the record (`from(...)` / `toEntity()`), not in a separate mapper class.
+MapStruct generates the implementation at compile time. The pom adds `lombok-mapstruct-binding` so Lombok runs first and MapStruct can see the generated getters and builders.
 
 ### GlobalHandler: one `@RestControllerAdvice`
 
@@ -147,6 +163,21 @@ Optional<AppointmentEntity> findById(UUID id);          // ok: return value
 // not: record BookingDto(Optional<String> note) {}     record component
 ```
 
+### Builders for own domain types, `new` for JDK and framework types
+
+```java
+AppointmentEntity appointment = AppointmentEntity.builder()
+        .vehicleId(vehicleId)
+        .serviceBayId(bayId)
+        .startTime(start)
+        .build();
+// not: new AppointmentEntity(vehicleId, bayId, start, ...)
+List<UUID> candidates = new ArrayList<>(freeTechnicianIds);   // JDK type: new is fine
+throw new SchedulerException(ErrorCode.KUSS_NO_CAPACITY);   // exceptions keep new
+```
+
+Applies to entities, DTOs and our own value objects.
+
 ### Stream API for collection transforms
 
 ```java
@@ -171,7 +202,7 @@ Split long methods into small named steps so each one is unit-testable:
 public AppointmentDto book(BookAppointmentDto request, String idempotencyKey) {
     BookingContext context = loadContext(request);
     validateSlot(context);
-    return AppointmentDto.from(insertWithRetry(context));
+    return appointmentMapper.toDto(insertWithRetry(context));
 }
 ```
 
