@@ -25,6 +25,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.dao.QueryTimeoutException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -74,9 +75,9 @@ class SchedulerGlobalHandlerTest {
         mockMvc
             .perform(get("/stub/overload").requestAttr("overload", overload))
             .andExpect(status().isServiceUnavailable())
-            .andExpect(header().string("Retry-After", "1"))
+            .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
             .andExpect(jsonPath("$.code").value("KUSS_SERVICE_BUSY"))
-            .andExpect(jsonPath("$.detail").value("Service is busy. Retry later."))
+            .andExpect(jsonPath("$.detail").value(ErrorMessageConstants.SERVICE_BUSY))
             .andReturn();
 
     assertThat(result.getRequest().getAttribute(RequestConstants.ERROR_CODE_ATTRIBUTE))
@@ -95,7 +96,7 @@ class SchedulerGlobalHandlerTest {
         mockMvc
             .perform(get("/stub/codes/{code}", ErrorCode.KUSS_SERVICE_BUSY))
             .andExpect(status().isServiceUnavailable())
-            .andExpect(header().string("Retry-After", "1"))
+            .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
             .andExpect(jsonPath("$.code").value("KUSS_SERVICE_BUSY"))
             .andReturn();
 
@@ -107,7 +108,7 @@ class SchedulerGlobalHandlerTest {
   void should_not_send_retry_after_for_other_scheduler_errors() throws Exception {
     mockMvc
         .perform(get("/stub/codes/{code}", ErrorCode.KUSS_NO_CAPACITY))
-        .andExpect(header().doesNotExist("Retry-After"));
+        .andExpect(header().doesNotExist(HttpHeaders.RETRY_AFTER));
   }
 
   @Test

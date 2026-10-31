@@ -3,6 +3,7 @@ package com.keyloop.scheduler.common.error;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.keyloop.scheduler.IntegrationTestSupport;
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
 import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
 import com.keyloop.scheduler.common.constants.HeaderConstants;
 import java.io.IOException;
@@ -10,14 +11,10 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 
 class ErrorHandlingIT extends IntegrationTestSupport {
-
-  @Autowired private JsonMapper jsonMapper;
 
   @Test
   void should_return_sanitized_500_whose_request_id_matches_the_header() {
@@ -57,7 +54,8 @@ class ErrorHandlingIT extends IntegrationTestSupport {
 
   @Test
   void should_return_problem_detail_for_container_level_bad_requests() throws IOException {
-    for (String target : List.of("/api/v1/dealerships/%00", "/api/v1/dealerships/%ZZ")) {
+    for (String target :
+        List.of(ApiPathConstants.DEALERSHIPS + "/%00", ApiPathConstants.DEALERSHIPS + "/%ZZ")) {
       String response = rawGet(target);
 
       assertThat(response).startsWith("HTTP/1.1 400");

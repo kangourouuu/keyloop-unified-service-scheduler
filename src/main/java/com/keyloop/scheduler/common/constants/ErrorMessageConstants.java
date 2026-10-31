@@ -26,6 +26,8 @@ public final class ErrorMessageConstants {
   public static final String IDEMPOTENCY_KEY_MISMATCH =
       "Idempotency-Key was already used with a different request.";
   public static final String BOOKING_NOT_COMPLETED = "Booking could not be completed.";
+  public static final String IDEMPOTENCY_CLAIM_NOT_OPEN =
+      "Idempotency claim is not open for completion.";
   public static final String SERVICE_BUSY = "Service is busy. Retry later.";
 
   public static final String APPOINTMENT_NOT_FOUND = "Appointment not found.";

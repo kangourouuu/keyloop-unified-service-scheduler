@@ -65,7 +65,7 @@ class IdempotencyServiceImpl implements IdempotencyService {
   public void complete(String key, AppointmentResultDto result) {
     String body = mapper.toResponseBody(result.appointment(), jsonMapper);
     if (repository.complete(key, result.httpStatus(), body) != 1) {
-      throw new IllegalStateException("Idempotency claim is not open for completion.");
+      throw new IllegalStateException(ErrorMessageConstants.IDEMPOTENCY_CLAIM_NOT_OPEN);
     }
   }
 

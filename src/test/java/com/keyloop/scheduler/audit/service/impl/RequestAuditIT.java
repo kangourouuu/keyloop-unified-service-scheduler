@@ -15,14 +15,12 @@ import com.keyloop.scheduler.common.constants.HeaderConstants;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.UUID;
 import lombok.Builder;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 
 class RequestAuditIT extends IntegrationTestSupport {
 
@@ -39,8 +37,6 @@ class RequestAuditIT extends IntegrationTestSupport {
   @Autowired private RequestAuditService requestAuditService;
 
   @Autowired private MeterRegistry meterRegistry;
-
-  @Autowired private JsonMapper jsonMapper;
 
   @Test
   void should_audit_500_with_internal_error_code_when_handler_throws() {
@@ -157,10 +153,11 @@ class RequestAuditIT extends IntegrationTestSupport {
   @Test
   void should_audit_availability_read_with_no_error_code_and_null_payload() {
     String uri =
-        "/api/v1/dealerships/"
+        ApiPathConstants.DEALERSHIPS
+            + "/"
             + SeedIds.LONDON_DEALERSHIP_ID
             + "/availability?date="
-            + LocalDate.now(clock).plusDays(7)
+            + sevenDaysAhead()
             + "&serviceType=OIL_CHANGE";
 
     AuditRow row = awaitAuditRow(requestIdOf(uri));

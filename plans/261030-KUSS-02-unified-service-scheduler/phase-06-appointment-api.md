@@ -11,7 +11,7 @@
 
 ## Key Insights
 - Both write endpoints return `AppointmentResultDto` → controller does `ResponseEntity.status(result.httpStatus()).body(result.appointment())`; replay and fresh responses share one path.
-- Cancel races: lock the row (`JdbcClient` `SELECT … FOR UPDATE` in `AppointmentWriteRepository.findForUpdate`, returns `AppointmentDto`; no managed JPA entity on the mutating path, A-023 #2) before deciding → second canceller sees `CANCELLED` and returns current state; `UPDATE` always hits 1 row. <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
+- Cancel races: no row lock. One atomic conditional JPQL `UPDATE ... SET status = CANCELLED, cancelled_at = :now WHERE id = :id AND status = CONFIRMED AND start_time > :now` (`AppointmentRepository.cancelIfConfirmedAndNotStarted`, `@Modifying`). Count 1 → read the row and return it. Count 0 → plain read: missing → 404, already `CANCELLED` → 200 with the current state, still `CONFIRMED` (started) → 409. A second canceller waits for the first to commit, matches nothing, and sees `CANCELLED`. <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 - Check order in cancel: not found → 404; already `CANCELLED` → 200 current state (even if in the past); `startTime ≤ clock.instant()` → 409 `KUSS_APPOINTMENT_ALREADY_STARTED`; else cancel.
 - Constraint annotations on the `Idempotency-Key` param trigger Spring's built-in method validation → `HandlerMethodValidationException` (already mapped in phase 03).
 - Past appointments cannot be booked through the API → seed them via `insertAppointment` (JDBC) for the 409 cancel test.
@@ -57,7 +57,7 @@ private AppointmentDto cancelIfConfirmed(AppointmentDto current) {
 }
 ```
 - `getAppointment(id)` and `listForDay(dealershipId, date)`: `@Transactional(readOnly = true)`; day bounds from `TimeSlotUtils.localDay(date, zone)`; dealership 404 first.
-- `AppointmentWriteRepository` adds `Optional<AppointmentDto> findForUpdate(UUID id)` (`JdbcClient`, `SELECT … FROM appointment WHERE id = :id FOR UPDATE`) <!-- Updated: Cross-review A-023 #2 -->; `AppointmentRepository` adds `findByDealershipIdAndStartTimeGreaterThanEqualAndStartTimeLessThanOrderByStartTime(...)` (read-only list). <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
+- `AppointmentRepository` adds `int cancelIfConfirmedAndNotStarted(UUID id, Instant now)` (JPQL `@Modifying` conditional update) and adds `findByDealershipIdAndStartTimeGreaterThanEqualAndStartTimeLessThanOrderByStartTime(...)` (read-only list). <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 - Controller has no logic: validate → delegate → map result.
 
 ## Related Code Files

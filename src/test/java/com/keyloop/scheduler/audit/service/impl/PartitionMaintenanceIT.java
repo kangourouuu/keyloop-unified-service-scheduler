@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.keyloop.scheduler.IntegrationTestSupport;
 import com.keyloop.scheduler.audit.service.MaintenanceService;
 import java.sql.Timestamp;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -42,8 +41,6 @@ class PartitionMaintenanceIT extends IntegrationTestSupport {
       """;
 
   @Autowired private MaintenanceService maintenanceService;
-
-  @Autowired private Clock clock;
 
   @Test
   void should_create_partitions_for_today_through_seven_days_ahead_at_startup() {

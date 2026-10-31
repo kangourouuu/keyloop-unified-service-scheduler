@@ -5,7 +5,6 @@ import com.keyloop.scheduler.audit.repository.RequestAuditRepository;
 import com.keyloop.scheduler.audit.service.MaintenanceService;
 import com.keyloop.scheduler.common.constants.RequestConstants;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -33,8 +32,7 @@ class MaintenanceServiceImpl implements MaintenanceService, SmartLifecycle {
          AND c.relname ~ '^request_audit_p[0-9]{8}$'
       """;
 
-  @PersistenceContext private EntityManager entityManager;
-
+  private final EntityManager entityManager;
   private final RequestAuditRepository requestAuditRepository;
   private final IdempotencyKeyRepository idempotencyKeyRepository;
   private final Clock clock;
@@ -42,10 +40,12 @@ class MaintenanceServiceImpl implements MaintenanceService, SmartLifecycle {
   private volatile boolean isRunning;
 
   MaintenanceServiceImpl(
+      EntityManager entityManager,
       RequestAuditRepository requestAuditRepository,
       IdempotencyKeyRepository idempotencyKeyRepository,
       Clock clock,
       PlatformTransactionManager transactionManager) {
+    this.entityManager = entityManager;
     this.requestAuditRepository = requestAuditRepository;
     this.idempotencyKeyRepository = idempotencyKeyRepository;
     this.clock = clock;

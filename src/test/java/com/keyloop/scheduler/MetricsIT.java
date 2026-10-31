@@ -11,7 +11,6 @@ import com.keyloop.scheduler.common.constants.MetricConstants;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -147,9 +146,10 @@ class MetricsIT extends IntegrationTestSupport {
 
     http.get()
         .uri(
-            "/api/v1/dealerships/{dealershipId}/availability?date={date}&serviceType=OIL_CHANGE",
+            ApiPathConstants.DEALERSHIPS
+                + "/{dealershipId}/availability?date={date}&serviceType=OIL_CHANGE",
             SeedIds.LONDON_DEALERSHIP_ID,
-            LocalDate.now(clock).plusDays(7))
+            sevenDaysAhead())
         .retrieve()
         .toBodilessEntity();
 

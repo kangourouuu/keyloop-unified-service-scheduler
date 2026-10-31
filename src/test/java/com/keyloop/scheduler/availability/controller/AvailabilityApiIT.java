@@ -4,22 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.keyloop.scheduler.IntegrationTestSupport;
 import com.keyloop.scheduler.SeedIds;
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 
 class AvailabilityApiIT extends IntegrationTestSupport {
 
   private static final ZoneId NEW_YORK = ZoneId.of("America/New_York");
-
-  @Autowired private JsonMapper jsonMapper;
 
   @Test
   void should_return_20_half_hour_slots_with_capacity_3_for_oil_change_in_london() {
@@ -139,20 +136,12 @@ class AvailabilityApiIT extends IntegrationTestSupport {
     assertThat(response.getStatusCode().value()).isEqualTo(400);
   }
 
-  private LocalDate sevenDaysAhead() {
-    return LocalDate.now(clock).plusDays(7);
-  }
-
   private static String availabilityPath(UUID dealershipId) {
-    return "/api/v1/dealerships/" + dealershipId + "/availability";
+    return ApiPathConstants.DEALERSHIPS + "/" + dealershipId + "/availability";
   }
 
   private static String availabilityUri(UUID dealershipId, LocalDate date, String serviceType) {
     return availabilityPath(dealershipId) + "?date=" + date + "&serviceType=" + serviceType;
-  }
-
-  private ResponseEntity<String> get(String uri) {
-    return http.get().uri(uri).retrieve().toEntity(String.class);
   }
 
   private JsonNode jsonOf(String uri) {

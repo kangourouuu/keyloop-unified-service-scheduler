@@ -22,8 +22,9 @@ public final class TimeSlotUtils {
 
   /**
    * Lists every half-hour start inside the dealership's opening hours on the given local date that
-   * fits the whole service duration before closing and is not already in the past. Booking validity
-   * is decided by membership in this list, so grid, hours, past and DST rules have one source.
+   * fits the whole service duration before closing and is not already in the past. {@link
+   * #isBookableStart} applies the same rule to a single start for bookings, and a test asserts the
+   * two agree, so grid, hours, past and DST rules cannot drift apart.
    */
   public static List<Instant> candidateStarts(
       LocalDate date,

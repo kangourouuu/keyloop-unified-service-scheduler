@@ -4,22 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.keyloop.scheduler.IntegrationTestSupport;
 import com.keyloop.scheduler.SeedIds;
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 
 class CatalogApiIT extends IntegrationTestSupport {
 
-  @Autowired private JsonMapper jsonMapper;
-
   @Test
   void should_list_the_two_seeded_dealerships() {
-    assertThat(jsonOf("/api/v1/dealerships").size()).isEqualTo(2);
+    assertThat(jsonOf(ApiPathConstants.DEALERSHIPS).size()).isEqualTo(2);
   }
 
   @Test
@@ -29,7 +26,7 @@ class CatalogApiIT extends IntegrationTestSupport {
 
   @Test
   void should_return_london_detail_with_technician_skills_mapped() {
-    JsonNode detail = jsonOf("/api/v1/dealerships/" + SeedIds.LONDON_DEALERSHIP_ID);
+    JsonNode detail = jsonOf(ApiPathConstants.DEALERSHIPS + "/" + SeedIds.LONDON_DEALERSHIP_ID);
 
     assertThat(detail.get("bays").size()).isEqualTo(4);
     assertThat(skillsOf(detail, SeedIds.LONDON_TECH_1_ID))
@@ -38,7 +35,7 @@ class CatalogApiIT extends IntegrationTestSupport {
 
   @Test
   void should_expose_is_active_on_bays_and_technicians() {
-    JsonNode detail = jsonOf("/api/v1/dealerships/" + SeedIds.LONDON_DEALERSHIP_ID);
+    JsonNode detail = jsonOf(ApiPathConstants.DEALERSHIPS + "/" + SeedIds.LONDON_DEALERSHIP_ID);
 
     assertThat(propertyNames(detail.get("bays").get(0)))
         .contains("isActive")
@@ -53,7 +50,7 @@ class CatalogApiIT extends IntegrationTestSupport {
   void should_return_404_for_unknown_dealership() {
     ResponseEntity<String> response =
         http.get()
-            .uri("/api/v1/dealerships/" + UUID.randomUUID())
+            .uri(ApiPathConstants.DEALERSHIPS + "/" + UUID.randomUUID())
             .retrieve()
             .toEntity(String.class);
 

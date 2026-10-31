@@ -1,6 +1,7 @@
 package com.keyloop.scheduler.common.web;
 
 import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
+import com.keyloop.scheduler.common.constants.RequestConstants;
 import com.keyloop.scheduler.common.error.ErrorCode;
 import java.io.IOException;
 import java.io.Writer;
@@ -9,6 +10,7 @@ import org.apache.catalina.connector.Response;
 import org.apache.catalina.valves.ErrorReportValve;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 
 /**
  * Writes the error body for failures that Tomcat rejects before a request reaches the application,
@@ -18,9 +20,10 @@ import org.springframework.http.HttpStatusCode;
  */
 public class ProblemDetailErrorReportValve extends ErrorReportValve {
 
-  private static final String PROBLEM_JSON = "application/problem+json";
   private static final String BODY_TEMPLATE =
-      "{\"type\":\"about:blank\",\"title\":\"%s\",\"status\":%d,\"detail\":\"%s\",\"code\":\"%s\"}";
+      "{\"type\":\"about:blank\",\"title\":\"%s\",\"status\":%d,\"detail\":\"%s\",\""
+          + RequestConstants.PROBLEM_CODE
+          + "\":\"%s\"}";
 
   @Override
   protected void report(Request request, Response response, Throwable throwable) {
@@ -33,7 +36,7 @@ public class ProblemDetailErrorReportValve extends ErrorReportValve {
     try {
       Writer writer = response.getReporter();
       if (writer != null) {
-        response.setContentType(PROBLEM_JSON);
+        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
         writer.write(body(HttpStatusCode.valueOf(status)));
         response.finishResponse();

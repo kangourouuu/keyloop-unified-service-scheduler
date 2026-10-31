@@ -13,6 +13,9 @@ public final class MetricConstants {
   public static final String TAG_STATUS = "status";
   public static final String UNKNOWN_SERVICE_TYPE = "unknown";
   public static final String RESULT_CONFIRMED = "confirmed";
+  public static final String CONFLICT_BAY = "bay";
+  public static final String CONFLICT_TECHNICIAN = "technician";
+  public static final String CONFLICT_DEADLOCK = "deadlock";
   public static final String STATUS_SUCCESS = "success";
   public static final String STATUS_FAILURE = "failure";
 

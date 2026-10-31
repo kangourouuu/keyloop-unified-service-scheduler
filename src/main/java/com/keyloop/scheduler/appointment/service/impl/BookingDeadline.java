@@ -6,6 +6,13 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.random.RandomGenerator;
 
+/**
+ * Paces one booking request: the 10 s wall-clock budget and the randomized backoff of a deadlock
+ * victim. The backoff is sized for a PostgreSQL {@code deadlock_timeout} of 100 ms, which is
+ * therefore a required setting for every deployment (docker-compose and the Testcontainers database
+ * set it); with the 1 s default the knot of a 20-way burst would drain far slower than the backoff
+ * assumes.
+ */
 final class BookingDeadline {
 
   private static final Duration BUDGET = Duration.ofSeconds(10);

@@ -247,7 +247,7 @@ Enforced by Checkstyle `MethodLength` (`max = 20`) bound to `./mvnw verify`, whi
 ### Data access: JPA only
 
 - Spring Data repositories with JPQL `@Query`; `nativeQuery = true` only where JPQL can't express the statement. No `JdbcClient` in `src/main`.
-- Booking, idempotency claim, cancel (`@Lock(PESSIMISTIC_WRITE)`) and audit writes go through entities: `persist` + `flush` inside each per-attempt transaction. SQLState is read from the exception cause chain.
+- Booking, idempotency claim and audit writes go through entities with `saveAndFlush` inside each per-attempt transaction; the entities implement `Persistable` so the write stays one INSERT. Cancel is one atomic conditional JPQL `UPDATE` (`@Modifying`), and idempotency completion is one conditional `UPDATE` too. No explicit locks anywhere (no `@Lock`, no `SELECT ... FOR UPDATE`). SQLState is read from the exception cause chain.
 - Partition DDL in `MaintenanceService` runs as `EntityManager` native queries; names come only from the date formatter or the regex.
 - Tests may keep raw JDBC connections for lock and race harnesses.
 
@@ -257,8 +257,9 @@ public interface AppointmentRepository extends JpaRepository<AppointmentEntity, 
   @Query("select count(a) > 0 from AppointmentEntity a where a.vehicleId = :vehicleId and a.status = AppointmentStatus.CONFIRMED and a.startTime < :end and a.endTime > :start")
   boolean existsVehicleOverlap(...);
 
-  @Lock(LockModeType.PESSIMISTIC_WRITE)
-  Optional<AppointmentEntity> findWithLockById(UUID id);
+  @Modifying(clearAutomatically = true)
+  @Query("update AppointmentEntity a set a.status = AppointmentStatus.CANCELLED, a.cancelledAt = :now where a.id = :id and a.status = AppointmentStatus.CONFIRMED and a.startTime > :now")
+  int cancelIfConfirmedAndNotStarted(@Param("id") UUID id, @Param("now") Instant now);
 }
 ```
 

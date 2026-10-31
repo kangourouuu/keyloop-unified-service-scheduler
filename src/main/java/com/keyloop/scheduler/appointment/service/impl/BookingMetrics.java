@@ -19,10 +19,6 @@ import org.springframework.stereotype.Component;
 @Component
 class BookingMetrics {
 
-  static final String CONFLICT_BAY = "bay";
-  static final String CONFLICT_TECHNICIAN = "technician";
-  static final String CONFLICT_DEADLOCK = "deadlock";
-
   private static final Set<String> BOOKING_RESULTS =
       Set.of(
           MetricConstants.RESULT_CONFIRMED,
@@ -49,7 +45,10 @@ class BookingMetrics {
     this.catalogService = catalogService;
     this.meterRegistry = meterRegistry;
     this.retryCounters =
-        Stream.of(CONFLICT_BAY, CONFLICT_TECHNICIAN, CONFLICT_DEADLOCK)
+        Stream.of(
+                MetricConstants.CONFLICT_BAY,
+                MetricConstants.CONFLICT_TECHNICIAN,
+                MetricConstants.CONFLICT_DEADLOCK)
             .collect(
                 Collectors.toMap(
                     Function.identity(),

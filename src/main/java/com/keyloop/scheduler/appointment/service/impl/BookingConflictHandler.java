@@ -1,6 +1,7 @@
 package com.keyloop.scheduler.appointment.service.impl;
 
 import com.keyloop.scheduler.appointment.util.BookingErrorUtils;
+import com.keyloop.scheduler.common.constants.MetricConstants;
 import com.keyloop.scheduler.common.util.SqlErrorUtils;
 import java.time.Duration;
 import java.util.Set;
@@ -68,10 +69,10 @@ class BookingConflictHandler {
 
   private static String conflictType(String constraint, String state) {
     if (DEADLOCK_STATE.equals(state)) {
-      return BookingMetrics.CONFLICT_DEADLOCK;
+      return MetricConstants.CONFLICT_DEADLOCK;
     }
     return BAY_OVERLAP_CONSTRAINT.equals(constraint)
-        ? BookingMetrics.CONFLICT_BAY
-        : BookingMetrics.CONFLICT_TECHNICIAN;
+        ? MetricConstants.CONFLICT_BAY
+        : MetricConstants.CONFLICT_TECHNICIAN;
   }
 }
