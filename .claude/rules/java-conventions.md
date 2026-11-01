@@ -15,8 +15,9 @@ Full rules with examples: `docs/code-standards.md`. These project conventions ov
 - `*Dto` — Java `record` with Lombok `@Builder`, never a class; no mapping code inside
 - `*Mapper` — MapStruct `@Mapper(componentModel = "spring")` interface; owns every Entity ↔ Dto mapping (`toDto`, `toEntity`)
 - `*GlobalHandler` — the single `@RestControllerAdvice` exception handler
-- `*Utils` — static helpers only (final class, private constructor)
-- `*Constants` — in `com.keyloop.scheduler.common.constants` (final class, private constructor): every error/detail message (`ErrorMessageConstants`) and every name used by 2+ classes (`HeaderConstants`, `RequestConstants`, `MetricConstants`). One-class literals stay `private static final` in that class; SQL stays in its repository
+- `*Helper` — Spring `@Component` with collaborators, no business API, not a service interface (lives next to the `*ServiceImpl` that uses it)
+- `*Utils` — static helpers only (final class, `@NoArgsConstructor(access = AccessLevel.PRIVATE)`, never a bare `@NoArgsConstructor`)
+- `*Constants` — in `com.keyloop.scheduler.common.constants` (final class, `@NoArgsConstructor(access = AccessLevel.PRIVATE)`): every error/detail message (`ErrorMessageConstants`) and every name used by 2+ classes (`HeaderConstants`, `RequestConstants`, `MetricConstants`). One-class literals stay `private static final` in that class; SQL stays in its repository
 - `*Test` — unit test (Surefire); `*IT` — integration test with Testcontainers (Failsafe)
 - Test methods: snake_case with prefix `should_` (`should_return_409_when_vehicle_already_booked`)
 
@@ -30,6 +31,7 @@ Full rules with examples: `docs/code-standards.md`. These project conventions ov
 - [ ] Build own domain types (entities, DTOs, value objects) with `X.builder()...build()`, never `new X(params)`. JDK/framework types (`new ArrayList<>()`, `new HashSet<>()`, `ProblemDetail`) and exceptions keep `new`
 - [ ] Lookups and uniqueness → `Set` / `HashMap`, not `List` scans or index loops
 - [ ] Each method ≤ 20 lines; split into smaller methods for testability. Enforced by Checkstyle `MethodLength` (max 20, main sources only) failing `./mvnw verify`. The Checkstyle config is created in KUSS-04's skeleton phase.
+- [ ] Data access is JPA only: Spring Data repositories + JPQL `@Query` (native only where JPQL can't); no JdbcClient in `src/main`
 
 ## Comments
 

@@ -1,0 +1,7 @@
+package com.keyloop.scheduler.appointment.dto;
+
+import java.util.UUID;
+import lombok.Builder;
+
+@Builder
+public record CandidateDto(UUID serviceBayId, UUID technicianId) {}

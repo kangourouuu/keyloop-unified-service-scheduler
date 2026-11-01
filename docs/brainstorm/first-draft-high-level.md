@@ -446,7 +446,8 @@ All non-2xx responses return `Content-Type: application/problem+json` with two e
 | `KUSS_IDEMPOTENCY_IN_FLIGHT` | `409 Conflict` | A concurrent request with the exact same `Idempotency-Key` is currently executing in an uncommitted transaction (caught via PK constraint). |
 | `KUSS_APPOINTMENT_ALREADY_STARTED` | `409 Conflict` | Cancellation attempted on an appointment whose start time has already passed. |
 | `KUSS_IDEMPOTENCY_KEY_MISMATCH` | `422 Unprocessable Content` | An `Idempotency-Key` was re-submitted with a different payload hash than originally recorded. |
-| `KUSS_INTERNAL_ERROR` | `500 Internal Server Error` | Unhandled runtime exception or infrastructure failure. Stack trace logged internally at `ERROR` with `requestId`; sanitized generic message returned to client. |
+| `KUSS_INTERNAL_ERROR` | `500 Internal Server Error` | Unhandled runtime exception or infrastructure failure. Stack trace logged internally at `ERROR` with `requestId`; sanitized generic message returned to client.<br/>- **Developer decision (after review, 2026-10-31):** 'no DB connection' now maps to KUSS_SERVICE_BUSY — overrides. |
+| `KUSS_SERVICE_BUSY` | `503 Service Unavailable` | The system is overloaded (DB pool exhausted, or the 10 s booking deadline reached); the response carries a `Retry-After` header.<br/>- **Developer decision (after review, 2026-10-31):** adds. Reason: tell clients to retry later instead of reporting an internal error. |
 
 ---
 
@@ -462,6 +463,7 @@ Designed to satisfy Keyloop's explicit observability criteria across the three p
    - Standard JVM, HikariCP pool saturation (`hikaricp.connections.pending` / `active`), and HTTP server latency histograms (`p50`, `p95`, `p99`).
    - **Domain Metrics (Bounded Cardinality):**
      - `scheduler.booking.requests_total{service_type, result="confirmed|KUSS_NO_CAPACITY|KUSS_VEHICLE_ALREADY_BOOKED|KUSS_VALIDATION_FAILED|KUSS_IDEMPOTENCY_KEY_MISSING|KUSS_INTERNAL_ERROR"}` — using the `KUSS_*` error code as the result tag ensures cheap, bounded cardinality while aligning metrics directly with the error catalog!
+       - **Developer decision (after review, 2026-10-31):** the result tag set includes KUSS_SERVICE_BUSY; idempotency error results are tagged service_type='unknown' — adds. Reason: reflect 503 overload outcomes in booking metrics, and standardize unparsed payload metric tagging where service type is unknown.
      - `scheduler.booking.gist_retries_total{conflict_type="bay|technician"}` — bounded cardinality counter measuring write contention without leaking dealership IDs!
      - `scheduler.availability.query.duration` timer.
 3. **Distributed Tracing:**
@@ -489,6 +491,8 @@ While V1 stays intentionally lean for reliability and clarity, the architecture 
 | **Downstream Side Effects** (SMS/Email confirmations, Dealer Management System sync) | Synchronous external HTTP calls would break `<= 200ms` write SLA & reliability | Introduce **Transactional Outbox table** written in the same PostgreSQL transaction as `Appointment`, relayed asynchronously to **RabbitMQ / Kafka** consumers. |
 | **Richer Workshop Constraints** | EV high-voltage bays, heavy-truck lifts, technician shift calendars & breaks | Add `bay_capability` join table (mirroring `technician_skill`) and `technician_unavailability` / `shift` intervals using the exact same `[start, end)` range model. |
 | **Client Authentication or Partner Integrations** | Request tampering, non-repudiation, and replay attacks across public or partner networks without mutual TLS | Introduce **Keyed Request Signing** (HMAC-SHA256 over method + path + timestamp + SHA-256(body) with per-client secret, or RFC 9421 HTTP Message Signatures) enforced with timestamp-window replay protection (e.g. 5-minute validity). |
+
+- Lock ordering before insert (pessimistic locks on the chosen bay, then technician, always in that order) to remove exclusion-index deadlocks under heavy bursts. Developer decision (after review, 2026-10-31): roadmap for scaling only; V1 keeps EXCLUDE + retry; trigger = scheduler.booking.gist_retries{conflict_type=deadlock} climbing under real load — adds. Reason: V1 correctness is guaranteed by the constraints; whole-resource locks would serialize unrelated time ranges.
 
 ---
 
@@ -530,6 +534,8 @@ To make review effortless, here is what we explicitly agreed in chat versus defa
 - **Agent selection:** Approach A (PostgreSQL `btree_gist` partial `EXCLUDE USING gist` constraints on `[start_time, end_time)` + dynamic re-query retry until capacity exhaustion, with randomized bay selection to disperse contention; C-008 / A-012).
 - **Developer decision (after review, 2026-10-30):** Approach A approved — confirms
 - **Reason:** Database-level GiST exclusion constraints enforce non-overlapping resource invariants with zero table locks or synthetic slot rows.
+- **Developer decision (after review, 2026-10-31):** DD-1 '10 s wall-clock deadline per booking request (40P01 backoff bounded)' — adds
+- **Reason:** Prevent unbounded retry loops and 40P01 deadlock backoffs from exceeding client timeouts.
 
 ### Idempotency Control
 - **Agent selection:** no Idempotency-Key; a duplicate POST gets 409 from the vehicle EXCLUDE constraint (C-011 #2 / A-012)
@@ -547,6 +553,8 @@ To make review effortless, here is what we explicitly agreed in chat versus defa
 - **Agent selection:** RFC 9457 ProblemDetail errors (§1 line 47, §3 line 47, §5 line 145) with no error-code catalog and no global handler
 - **Developer decision (after review, 2026-10-30):** Single `@RestControllerAdvice` global exception handler mapping all exceptions to RFC 9457 `ProblemDetail` with extension fields `code` (`KUSS_*`) and `requestId` (correlated with MDC, `X-Request-Id`, and `request_audit`), driven by an explicit enum catalog — adds
 - **Reason:** Guarantee a standardized machine-readable error catalog across all API responses, application logs, and database audit records without leaking internal details.
+- **Developer decision (after review, 2026-10-31):** DD-2 '503 + Retry-After with KUSS_SERVICE_BUSY on overload instead of 500' — overrides
+- **Reason:** Tell clients to retry later instead of reporting an internal error.
 
 ### Request-Body Integrity & Request Signing (Roadmap Only)
 - **Agent selection:** none (not in the draft)

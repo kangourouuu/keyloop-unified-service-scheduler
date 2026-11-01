@@ -13,19 +13,21 @@
 - A failed INSERT (23P01) aborts the PG tx → retry = **new tx per attempt** (`TransactionTemplate`). No savepoints / `NESTED` (Hibernate keeps failed state, researcher-02 §2, A-022 #1). `book()` must NOT be `@Transactional` (outer tx would pin one snapshot and kill the loop).
 - Losing inserter waits for the winner; winner commits → 23P01; next attempt's fresh READ COMMITTED snapshot sees the winner → that bay/tech drops out. Empty candidates → `KUSS_NO_CAPACITY`. Loop ends by design.
 - **Deadlocks are expected, not a bug** ("unprincipled deadlock", `execIndexing.c`): PG checks an EXCLUDE constraint *after* inserting its own index tuple, so two concurrent conflicting inserts each wait on the other's xid → after `deadlock_timeout` one aborts with 40P01. Unique btree indexes avoid this via speculative insertion; exclusion constraints do not (corrects researcher-02 §7 "no cycles"). The 40P01 retry handles it; `deadlock_timeout=100ms` (phase 01) keeps the loser's wait short. Tests never assert zero `deadlock` retries. <!-- Updated: Red Team #1 -->
-- Bounded in time: `TransactionTemplate.setTimeout(5)` per attempt (JDBC statement timeout) + prod Hikari `connection-timeout: 3s`; no free connection → `CannotCreateTransactionException` → 500 `KUSS_INTERNAL_ERROR`, logged at WARN without stack trace. <!-- Updated: Red Team #4 -->
+- Bounded in time: `TransactionTemplate.setTimeout(5)` per attempt (JDBC statement timeout) + prod Hikari `connection-timeout: 3s`; no free connection → `CannotCreateTransactionException` → 500 `KUSS_INTERNAL_ERROR`, logged at WARN without stack trace. <!-- Updated: Red Team #4 --> <!-- Superseded: developer decision 2026-10-31 (DD-1/DD-2, review) -->
 - Vehicle check runs before capacity: `EXISTS` vehicle-overlap precheck in `loadAndValidate` → `KUSS_VEHICLE_ALREADY_BOOKED` even when the slot is full (§12 #4); the vehicle EXCLUDE stays the race backstop. <!-- Updated: Red Team #8 -->
 - Every instant written (`created_at`, times echoed in responses) = `clock.instant().truncatedTo(ChronoUnit.MICROS)` → Postgres µs round-trip equals the fresh response (replay bodies identical). <!-- Updated: Red Team #11 -->
 - All SQL lives in `private static final String` text-block constants → every method stays ≤ 20 lines. <!-- Updated: Red Team #13 -->
-- Writes + candidate queries via `JdbcClient` (joins the JPA tx connection); exception exposes `PSQLException` with structured constraint name.
+- Writes + candidate queries via `JdbcClient` (joins the JPA tx connection); exception exposes `PSQLException` with structured constraint name. <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 - Claim-first idempotency: plain `INSERT` blocks on a concurrent uncommitted same-key claim; holder commits → 23505 (`DuplicateKeyException`) → 409 IN_FLIGHT; holder rolls back → our insert succeeds. **No `SET LOCAL lock_timeout`** (would also cap EXCLUDE waits and mislabel them).
 - Hash over canonical fields, not raw body → whitespace/field-order/offset-equivalent requests replay instead of 422.
 - Bind `Instant` as `OffsetDateTime` (`atOffset(UTC)`) — pgjdbc `Instant` binding not guaranteed.
 - `SqlErrorUtils` needs `org.postgresql.util.PSQLException` at compile time → `postgresql` is compile scope (set in phase 01).
+- **Developer decision (after review, 2026-10-31):** JdbcClient in this phase is replaced by JPA (Spring Data @Query / entity persist + flush; EntityManager native queries only for partition DDL) — overrides. Reason: one data-access style.
+- **Developer decision (after review, 2026-10-31):** DD-1: each booking request has a 10 s wall-clock deadline, checked before each attempt and before each 40P01 sleep; the backoff exponent counts deadlocks only; no sleep after the last attempt or past the deadline — adds. DD-2: no free connection or the deadline reached → 503 `KUSS_SERVICE_BUSY` with `Retry-After: 1` (the claim rolls back, so a same-key retry is safe); the retry cap stays 500 `KUSS_INTERNAL_ERROR` — overrides the 500 on pool timeout. Reason: a request must not outlive its client by minutes, and overload is temporary and retryable, which 500 does not say.
 
 ## Requirements
 - `book(BookAppointmentDto, idempotencyKey)` → `AppointmentResultDto(httpStatus, AppointmentDto)`; 201 fresh, stored status on replay.
-- Errors: unknown dealership/vehicle/inactive service type → 404; not in `candidateStarts(...)` (off-grid / past / outside hours) or date > today + 90 days → one 400 `KUSS_VALIDATION_FAILED`; no free pair → 409 `KUSS_NO_CAPACITY`; vehicle overlap (precheck or constraint) → 409 `KUSS_VEHICLE_ALREADY_BOOKED` (no retry, checked before capacity); same key other payload → 422; concurrent same key → 409 `KUSS_IDEMPOTENCY_IN_FLIGHT`; retry cap or no DB connection → 500 `KUSS_INTERNAL_ERROR`.
+- Errors: unknown dealership/vehicle/inactive service type → 404; not in `candidateStarts(...)` (off-grid / past / outside hours) or date > today + 90 days → one 400 `KUSS_VALIDATION_FAILED`; no free pair → 409 `KUSS_NO_CAPACITY`; vehicle overlap (precheck or constraint) → 409 `KUSS_VEHICLE_ALREADY_BOOKED` (no retry, checked before capacity); same key other payload → 422; concurrent same key → 409 `KUSS_IDEMPOTENCY_IN_FLIGHT`; retry cap or no DB connection → 500 `KUSS_INTERNAL_ERROR`. <!-- Superseded: developer decision 2026-10-31 (DD-1/DD-2, review) -->
 - Bay = random among free active bays at the dealership; tech = qualified, active, free, fewest CONFIRMED minutes on that local day (ties random).
 - Metric (needed by `VehicleOverlapIT`): counter `scheduler.booking.gist_retries{conflict_type=bay|technician|deadlock}` (Prometheus: `…_total`), all three tag values pre-registered in the constructor; tests read the sum over `meterRegistry.find(...).counters()`. <!-- Updated: Red Team #11 -->
 
@@ -41,7 +43,7 @@ public AppointmentResultDto book(BookAppointmentDto request, String idempotencyK
             handleConflict(ex);   // vehicle → throw 409; non-retryable → rethrow; bay/tech/40P01 → count + loop
         } catch (CannotCreateTransactionException ex) {   // pool exhausted after connection-timeout
             log.warn("Booking aborted, no DB connection: {}", ex.getMessage());
-            throw new SchedulerException(ErrorCode.KUSS_INTERNAL_ERROR, ErrorMessageConstants.BOOKING_NOT_COMPLETED);
+            throw new SchedulerException(ErrorCode.KUSS_INTERNAL_ERROR, ErrorMessageConstants.BOOKING_NOT_COMPLETED); <!-- Superseded: developer decision 2026-10-31 (DD-1/DD-2, review) -->
         }
     }
     log.error("Booking retry cap {} reached, dealershipId={}", MAX_ATTEMPTS, request.dealershipId());
@@ -56,7 +58,7 @@ private AppointmentResultDto bookOnce(BookAppointmentDto request, String idempot
     BookingContext context = loadAndValidate(request);          // 404 / 400 / 409 VEHICLE (EXISTS precheck)
     CandidateDto candidate = pickCandidate(context);             // 409 NO_CAPACITY when a list is empty
     AppointmentDto appointment = appointmentMapper.confirmed(context, candidate, clock.instant().truncatedTo(ChronoUnit.MICROS));
-    appointmentRepository.insert(appointment);                   // JdbcClient; may throw 23P01
+    appointmentRepository.insert(appointment);                   // JdbcClient; may throw 23P01 <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
     AppointmentResultDto result = AppointmentResultDto.builder().status(201).appointment(appointment).build();
     idempotencyService.complete(idempotencyKey, result);
     return result;
@@ -130,7 +132,7 @@ Modify: `{root}/src/main/java/com/keyloop/scheduler/appointment/AppointmentRepos
 - [ ] `CandidateSelectionTest` red → green
 - [ ] `BookingConcurrencyIT`, `VehicleOverlapIT`, `IdempotencyIT` red
 - [ ] DTOs, `SqlErrorUtils`, `CandidateSelectionUtils`
-- [ ] `AppointmentWriteRepository` fragment (JdbcClient, OffsetDateTime binds, SQL constants, vehicle precheck)
+- [ ] `AppointmentWriteRepository` fragment (JdbcClient, OffsetDateTime binds, SQL constants, vehicle precheck) <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 - [ ] `IdempotencyService`/`Impl` (MANDATORY, `findExisting` / `insertClaim`)
 - [ ] `AppointmentService`/`Impl.book` whole-tx retry + retry counter
 - [ ] `./mvnw verify` green, concurrency IT 5× stable

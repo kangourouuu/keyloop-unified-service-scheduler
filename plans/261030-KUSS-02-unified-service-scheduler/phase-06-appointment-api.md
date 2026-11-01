@@ -11,11 +11,12 @@
 
 ## Key Insights
 - Both write endpoints return `AppointmentResultDto` → controller does `ResponseEntity.status(result.httpStatus()).body(result.appointment())`; replay and fresh responses share one path.
-- Cancel races: lock the row (`JdbcClient` `SELECT … FOR UPDATE` in `AppointmentWriteRepository.findForUpdate`, returns `AppointmentDto`; no managed JPA entity on the mutating path, A-023 #2) before deciding → second canceller sees `CANCELLED` and returns current state; `UPDATE` always hits 1 row.
+- Cancel races: no row lock. One atomic conditional JPQL `UPDATE ... SET status = CANCELLED, cancelled_at = :now WHERE id = :id AND status = CONFIRMED AND start_time > :now` (`AppointmentRepository.cancelIfConfirmedAndNotStarted`, `@Modifying`). Count 1 → read the row and return it. Count 0 → plain read: missing → 404, already `CANCELLED` → 200 with the current state, still `CONFIRMED` (started) → 409. A second canceller waits for the first to commit, matches nothing, and sees `CANCELLED`. <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 - Check order in cancel: not found → 404; already `CANCELLED` → 200 current state (even if in the past); `startTime ≤ clock.instant()` → 409 `KUSS_APPOINTMENT_ALREADY_STARTED`; else cancel.
 - Constraint annotations on the `Idempotency-Key` param trigger Spring's built-in method validation → `HandlerMethodValidationException` (already mapped in phase 03).
 - Past appointments cannot be booked through the API → seed them via `insertAppointment` (JDBC) for the 409 cancel test.
 - HTTP tests prove the mapping (one case per status/code) plus the HTTP burst; booking semantics (in-flight harness, replay/mismatch variants) are proven once at service level in phase 05. <!-- Updated: Red Team #5 -->
+- **Developer decision (after review, 2026-10-31):** JdbcClient in this phase is replaced by JPA (Spring Data @Query / entity persist + flush; EntityManager native queries only for partition DDL) — overrides. Reason: one data-access style.
 
 ## Requirements
 | Endpoint | Success | Errors |
@@ -30,33 +31,30 @@
 
 ## Architecture
 ```java
-@Transactional
+@Transactional(timeout = RequestConstants.TRANSACTION_TIMEOUT_SECONDS)
 public AppointmentResultDto cancel(UUID appointmentId, String idempotencyKey) {
     Optional<AppointmentResultDto> replay = idempotencyService.claim(idempotencyKey, cancelRequest(appointmentId));
     if (replay.isPresent()) {
         return replay.get();
     }
-    AppointmentDto appointment = appointmentRepository.findForUpdate(appointmentId)
-            .orElseThrow(() -> new SchedulerException(ErrorCode.KUSS_RESOURCE_NOT_FOUND, ErrorMessageConstants.APPOINTMENT_NOT_FOUND));
-    AppointmentResultDto result = AppointmentResultDto.builder().status(200).appointment(cancelIfConfirmed(appointment)).build();
+    Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);   // µs = Postgres precision, replay body identical
+    AppointmentResultDto result = AppointmentResultDto.builder().httpStatus(200).appointment(cancelAtomically(appointmentId, now)).build();
     idempotencyService.complete(idempotencyKey, result);
     return result;
 }
 
-private AppointmentDto cancelIfConfirmed(AppointmentDto current) {
-    if (!AppointmentStatus.CONFIRMED.name().equals(current.status())) {
-        return current;
-    }
-    Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);   // µs = Postgres precision, replay body identical
-    if (!current.startTime().isAfter(now)) {
+private AppointmentDto cancelAtomically(UUID appointmentId, Instant now) {
+    int cancelled = appointmentRepository.cancelIfConfirmedAndNotStarted(appointmentId, now);   // JPQL @Modifying: UPDATE … WHERE id = :id AND status = CONFIRMED AND start_time > :now
+    AppointmentEntity appointment = appointmentRepository.findById(appointmentId)
+            .orElseThrow(BookingErrorUtils::appointmentNotFound);   // 404, plain read, no lock
+    if (cancelled == 0 && appointment.getStatus() == AppointmentStatus.CONFIRMED) {
         throw new SchedulerException(ErrorCode.KUSS_APPOINTMENT_ALREADY_STARTED, ErrorMessageConstants.APPOINTMENT_ALREADY_STARTED);
     }
-    appointmentRepository.markCancelled(current.id(), now);   // JdbcClient UPDATE … WHERE id = :id AND status = 'CONFIRMED'
-    return current.cancelled(now);
+    return appointmentMapper.toDto(appointment);   // count 1: just cancelled; count 0 and CANCELLED: current state, 200
 }
 ```
 - `getAppointment(id)` and `listForDay(dealershipId, date)`: `@Transactional(readOnly = true)`; day bounds from `TimeSlotUtils.localDay(date, zone)`; dealership 404 first.
-- `AppointmentWriteRepository` adds `Optional<AppointmentDto> findForUpdate(UUID id)` (`JdbcClient`, `SELECT … FROM appointment WHERE id = :id FOR UPDATE`) <!-- Updated: Cross-review A-023 #2 -->; `AppointmentRepository` adds `findByDealershipIdAndStartTimeGreaterThanEqualAndStartTimeLessThanOrderByStartTime(...)` (read-only list).
+- `AppointmentRepository` adds `int cancelIfConfirmedAndNotStarted(UUID id, Instant now)` (JPQL `@Modifying` conditional update) and adds `findByDealershipIdAndStartTimeGreaterThanEqualAndStartTimeLessThanOrderByStartTime(...)` (read-only list). <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 - Controller has no logic: validate → delegate → map result.
 
 ## Related Code Files
@@ -65,9 +63,7 @@ private AppointmentDto cancelIfConfirmed(AppointmentDto current) {
 - `{root}/src/test/java/com/keyloop/scheduler/appointment/AppointmentApiIT.java`
 Modify:
 - `{root}/src/main/java/com/keyloop/scheduler/appointment/{AppointmentService,AppointmentServiceImpl}.java` (cancel, get, listForDay)
-- `{root}/src/main/java/com/keyloop/scheduler/appointment/AppointmentRepository.java` (day query)
-- `{root}/src/main/java/com/keyloop/scheduler/appointment/{AppointmentWriteRepository,AppointmentWriteRepositoryImpl}.java` (`findForUpdate`)
-- `{root}/src/main/java/com/keyloop/scheduler/appointment/AppointmentDto.java` (`cancelled(Instant)`)
+- `{root}/src/main/java/com/keyloop/scheduler/appointment/AppointmentRepository.java` (day query, `cancelIfConfirmedAndNotStarted`)
 - `{root}/src/main/java/com/keyloop/scheduler/SchedulerApplication.java` (`@OpenAPIDefinition`)
 
 ## Implementation Steps
@@ -86,12 +82,12 @@ Modify:
    - cancel frees capacity: cancel one of the 3 → re-book same slot (new vehicle, new key) → 201
    - reads: GET by id returns booked row; list for the date returns CONFIRMED + CANCELLED ordered by start
    - OpenAPI: `GET /v3/api-docs` 200 and contains `/api/v1/appointments`
-2. Implement repository additions, `AppointmentDto.cancelled`, service `cancel` / `getAppointment` / `listForDay`, `AppointmentController`, `@OpenAPIDefinition`.
+2. Implement repository additions, service `cancel` / `getAppointment` / `listForDay`, `AppointmentController`, `@OpenAPIDefinition`.
 3. `./mvnw verify` green; manual: Swagger UI loads, POST from UI works with header.
 
 ## Todo List
 - [ ] `AppointmentApiIT` red (scenarios 1–5, 7, 8, 10, 11 + cancel/reads/OpenAPI)
-- [ ] `findForUpdate` (JdbcClient) + day query
+- [ ] `cancelIfConfirmedAndNotStarted` (JPQL conditional update, no lock) + day query
 - [ ] Service cancel/get/list
 - [ ] Controller with header + body validation
 - [ ] `@OpenAPIDefinition`

@@ -1,0 +1,64 @@
+package com.keyloop.scheduler.common.web;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+
+import com.keyloop.scheduler.audit.dto.RequestAuditDto;
+import com.keyloop.scheduler.audit.service.RequestAuditService;
+import com.keyloop.scheduler.common.constants.ApiPathConstants;
+import java.time.Clock;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.mock.web.MockFilterChain;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.transaction.CannotCreateTransactionException;
+import tools.jackson.databind.json.JsonMapper;
+
+class RequestAuditFilterTest {
+
+  private static final String BOOKING_PATH = ApiPathConstants.APPOINTMENTS;
+
+  @Test
+  void should_hand_audit_to_reject_when_executor_refuses_the_task() throws Exception {
+    RequestAuditService auditService = mock(RequestAuditService.class);
+    Executor fullQueue =
+        task -> {
+          throw new RejectedExecutionException("audit queue full");
+        };
+    RequestAuditFilter filter =
+        new RequestAuditFilter(
+            Clock.systemUTC(), auditService, fullQueue, JsonMapper.builder().build());
+    MockHttpServletRequest request = new MockHttpServletRequest("POST", BOOKING_PATH);
+    request.setServletPath(BOOKING_PATH);
+
+    filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+    ArgumentCaptor<RequestAuditDto> dropped = ArgumentCaptor.forClass(RequestAuditDto.class);
+    verify(auditService).reject(dropped.capture());
+    verify(auditService, never()).write(any());
+    assertThat(dropped.getValue().path()).isEqualTo(BOOKING_PATH);
+    assertThat(dropped.getValue().httpStatus()).isEqualTo(200);
+  }
+
+  @Test
+  void should_hand_audit_to_reject_when_the_write_fails_outside_its_transaction() throws Exception {
+    RequestAuditService auditService = mock(RequestAuditService.class);
+    doThrow(new CannotCreateTransactionException("database down")).when(auditService).write(any());
+    RequestAuditFilter filter =
+        new RequestAuditFilter(
+            Clock.systemUTC(), auditService, Runnable::run, JsonMapper.builder().build());
+    MockHttpServletRequest request = new MockHttpServletRequest("POST", BOOKING_PATH);
+    request.setServletPath(BOOKING_PATH);
+
+    filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+    verify(auditService).reject(any(RequestAuditDto.class));
+  }
+}

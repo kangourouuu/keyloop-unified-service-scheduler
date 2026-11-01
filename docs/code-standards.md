@@ -6,20 +6,21 @@ These conventions override ponytail's "no interface with a single implementation
 
 ## 1. Naming: class suffix → role
 
-| Suffix | Role |
-|---|---|
-| `*Controller` | Request entry point (REST controller) |
-| `*Service` | Service interface |
-| `*ServiceImpl` | Implementation of that interface |
-| `*Repository` | Spring Data JPA repository |
-| `*Entity` | JPA entity, lower snake_case table name |
-| `*Dto` | Java `record` with `@Builder`, no mapping code |
-| `*Mapper` | MapStruct interface, owns Entity ↔ Dto mapping |
-| `*GlobalHandler` | The single global exception handler |
-| `*Utils` | Static helpers |
-| `*Constants` | Shared constants in `common.constants` |
-| `*Test` | Unit test (Surefire) |
-| `*IT` | Integration test with Testcontainers (Failsafe) |
+|      Suffix      |                                       Role                                       |
+|------------------|----------------------------------------------------------------------------------|
+| `*Controller`    | Request entry point (REST controller)                                            |
+| `*Service`       | Service interface                                                                |
+| `*ServiceImpl`   | Implementation of that interface                                                 |
+| `*Repository`    | Spring Data JPA repository                                                       |
+| `*Entity`        | JPA entity, lower snake_case table name                                          |
+| `*Dto`           | Java `record` with `@Builder`, no mapping code                                   |
+| `*Mapper`        | MapStruct interface, owns Entity ↔ Dto mapping                                   |
+| `*GlobalHandler` | The single global exception handler                                              |
+| `*Helper`        | Spring `@Component` with collaborators, no business API, not a service interface |
+| `*Utils`         | Static helpers                                                                   |
+| `*Constants`     | Shared constants in `common.constants`                                           |
+| `*Test`          | Unit test (Surefire)                                                             |
+| `*IT`            | Integration test with Testcontainers (Failsafe)                                  |
 
 ### Controller: request entry point
 
@@ -27,8 +28,8 @@ These conventions override ponytail's "no interface with a single implementation
 @RestController
 @RequestMapping("/api/v1/appointments")
 class AppointmentController {
-    private final AppointmentService appointmentService;
-    // constructor injection, delegates to the service, no business logic here
+  private final AppointmentService appointmentService;
+  // constructor injection, delegates to the service, no business logic here
 }
 ```
 
@@ -36,7 +37,7 @@ class AppointmentController {
 
 ```java
 public interface AppointmentService {
-    AppointmentDto book(BookAppointmentDto request, String idempotencyKey);
+  AppointmentDto book(BookAppointmentDto request, String idempotencyKey);
 }
 
 @Service
@@ -47,9 +48,11 @@ class AppointmentServiceImpl implements AppointmentService { ... }
 
 ```java
 interface ServiceBayRepository extends JpaRepository<ServiceBayEntity, UUID> {
-    List<ServiceBayEntity> findByDealershipIdAndIsActiveTrue(UUID dealershipId);
+  List<ServiceBayEntity> findByDealershipIdAndIsActiveTrue(UUID dealershipId);
 }
 ```
+
+The boolean field is `isActive` (column `active`). Renaming it changed the JSON property of bays and technicians from `active` to `isActive`: a **breaking API change**, recorded in the Developer decisions log.
 
 ### Entity: lower snake_case table names, Lombok `@Getter @Setter`, never `@Data`
 
@@ -80,8 +83,8 @@ Never `class AppointmentDto`, and no `from(...)` / `toEntity()` inside the recor
 ```java
 @Mapper(componentModel = "spring")
 interface AppointmentMapper {
-    AppointmentDto toDto(AppointmentEntity entity);
-    AppointmentEntity toEntity(BookAppointmentDto request);
+  AppointmentDto toDto(AppointmentEntity entity);
+  AppointmentEntity toEntity(BookAppointmentDto request);
 }
 ```
 
@@ -92,8 +95,8 @@ MapStruct generates the implementation at compile time. The pom adds `lombok-map
 ```java
 @RestControllerAdvice
 class SchedulerGlobalHandler {
-    @ExceptionHandler(NoCapacityException.class)
-    ProblemDetail handle(NoCapacityException ex) { ... } // 409, code = KUSS_NO_CAPACITY
+  @ExceptionHandler(NoCapacityException.class)
+  ProblemDetail handle(NoCapacityException ex) { ... } // 409, code = KUSS_NO_CAPACITY
 }
 ```
 
@@ -102,20 +105,19 @@ All errors leave as RFC 9457 `ProblemDetail` with `code` (`KUSS_*`) and `request
 ### Utils: static helpers
 
 ```java
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 final class TimeSlotUtils {
-    private TimeSlotUtils() {}
-    static boolean isOnHalfHourGrid(LocalTime time) { ... }
+  static boolean isOnHalfHourGrid(LocalTime time) { ... }
 }
 ```
 
 ### Constants: messages and shared names in `common.constants`
 
 ```java
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ErrorMessageConstants {
-    public static final String BOOKING_NOT_COMPLETED = "Booking could not be completed.";
-    public static final String APPOINTMENT_NOT_FOUND = "Appointment not found.";
-
-    private ErrorMessageConstants() {}
+  public static final String BOOKING_NOT_COMPLETED = "Booking could not be completed.";
+  public static final String APPOINTMENT_NOT_FOUND = "Appointment not found.";
 }
 ```
 
@@ -123,6 +125,25 @@ public final class ErrorMessageConstants {
 - So is every name read by more than one class: headers (`HeaderConstants`), request attribute and MDC keys (`RequestConstants`), metric names (`MetricConstants`).
 - A literal used in one class only stays `private static final` in that class.
 - SQL stays as `private static final` text blocks in its repository, next to the method that runs it.
+
+### Package layout: one subpackage per role
+
+Each domain (`appointment`, `availability`, `catalog`, `audit`) is one package with the same subpackages. A class lives in the subpackage that matches its suffix from the table above. Shared code (`constants`, `error`, `util`, `web`) stays in `common`.
+
+```
+com.keyloop.scheduler.appointment
+├── controller   AppointmentController
+├── service      AppointmentService (interface)
+│   └── impl     AppointmentServiceImpl, BookingAttemptHelper
+├── repository   AppointmentRepository, AppointmentWriteRepository
+├── entity       AppointmentEntity, AppointmentStatus
+├── dto          AppointmentDto, BookAppointmentDto, ...
+├── mapper       AppointmentMapper
+├── config       (configuration classes)
+└── util         CandidateSelectionUtils
+```
+
+A class used from another package is `public`, so package-private classes stay inside their subpackage.
 
 ### Test vs IT
 
@@ -184,10 +205,10 @@ Optional<AppointmentEntity> findById(UUID id);          // ok: return value
 
 ```java
 AppointmentEntity appointment = AppointmentEntity.builder()
-        .vehicleId(vehicleId)
-        .serviceBayId(bayId)
-        .startTime(start)
-        .build();
+    .vehicleId(vehicleId)
+    .serviceBayId(bayId)
+    .startTime(start)
+    .build();
 // not: new AppointmentEntity(vehicleId, bayId, start, ...)
 List<UUID> candidates = new ArrayList<>(freeTechnicianIds);   // JDK type: new is fine
 throw new SchedulerException(ErrorCode.KUSS_NO_CAPACITY);   // exceptions keep new
@@ -199,8 +220,8 @@ Applies to entities, DTOs and our own value objects.
 
 ```java
 List<UUID> busyBayIds = appointments.stream()
-        .map(AppointmentEntity::getServiceBayId)
-        .toList();
+    .map(AppointmentEntity::getServiceBayId)
+    .toList();
 ```
 
 ### Set / HashMap for lookup and uniqueness
@@ -217,13 +238,32 @@ Split long methods into small named steps so each one is unit-testable:
 
 ```java
 public AppointmentDto book(BookAppointmentDto request, String idempotencyKey) {
-    BookingContext context = loadContext(request);
-    validateSlot(context);
-    return appointmentMapper.toDto(insertWithRetry(context));
+  BookingContext context = loadContext(request);
+  validateSlot(context);
+  return appointmentMapper.toDto(insertWithRetry(context));
 }
 ```
 
 Enforced by Checkstyle `MethodLength` (`max = 20`) bound to `./mvnw verify`, which fails the build on violation. Test sources are excluded. The Checkstyle config itself is created in KUSS-04's skeleton phase.
+
+### Data access: JPA only
+
+- Spring Data repositories with JPQL `@Query`; `nativeQuery = true` only where JPQL can't express the statement. No `JdbcClient` in `src/main`.
+- Booking, idempotency claim and audit writes go through entities with `saveAndFlush` inside each per-attempt transaction; the entities implement `Persistable` so the write stays one INSERT. Cancel is one atomic conditional JPQL `UPDATE` (`@Modifying`), and idempotency completion is one conditional `UPDATE` too. No explicit locks anywhere (no `@Lock`, no `SELECT ... FOR UPDATE`). SQLState is read from the exception cause chain.
+- Partition DDL in `MaintenanceService` runs as `EntityManager` native queries; names come only from the date formatter or the regex.
+- Tests may keep raw JDBC connections for lock and race harnesses.
+
+```java
+public interface AppointmentRepository extends JpaRepository<AppointmentEntity, UUID> {
+
+  @Query("select count(a) > 0 from AppointmentEntity a where a.vehicleId = :vehicleId and a.status = AppointmentStatus.CONFIRMED and a.startTime < :end and a.endTime > :start")
+  boolean existsVehicleOverlap(...);
+
+  @Modifying(clearAutomatically = true)
+  @Query("update AppointmentEntity a set a.status = AppointmentStatus.CANCELLED, a.cancelledAt = :now where a.id = :id and a.status = AppointmentStatus.CONFIRMED and a.startTime > :now")
+  int cancelIfConfirmedAndNotStarted(@Param("id") UUID id, @Param("now") Instant now);
+}
+```
 
 ## 3. Comments: Javadoc only
 
@@ -267,19 +307,19 @@ Every table change (create, alter, drop, index, constraint, seed data) is a vers
 - Hibernate never touches the schema: `spring.jpa.hibernate.ddl-auto=validate` and `spring.jpa.generate-ddl=false`. Startup fails if an `*Entity` and its table drift apart.
 - A committed migration is never edited. To change something, add the next `V<version + 1>__<description>.sql`.
 - `spring.flyway.clean-disabled=true`, so nothing can wipe the database.
-- Only exception: the audit maintenance job creates tomorrow's `request_audit` day partitions and drops ones older than 14 days at runtime. It never changes columns, indexes or constraints, because partitions inherit those from the parent table that Flyway created.
+- Only exception: the audit maintenance job creates tomorrow's `request_audit` day partitions and drops ones older than six months at runtime. It never changes columns, indexes or constraints, because partitions inherit those from the parent table that Flyway created.
 
 ## 5. Formatting: Spotless
 
 Spotless formats the code and `./mvnw verify` runs `spotless:check`, which fails the build on any unformatted file. Run `./mvnw spotless:apply` before committing.
 
-| Files | Formatter |
-|---|---|
-| Java, main and test | google-java-format, plus unused imports removed and a fixed import order |
-| `pom.xml` | sortPom |
-| `db/migration/*.sql` | DBeaver SQL formatter |
-| `*.yml`, `docker-compose.yml` | Jackson YAML |
-| `README.md`, `docs/*.md` | flexmark (not `docs/brainstorm/`, `docs/agent-discussion/` or `plans/`) |
+|             Files             |                                                      Formatter                                                       |
+|-------------------------------|----------------------------------------------------------------------------------------------------------------------|
+| Java, main and test           | google-java-format, Google style (2-space indent, 100 columns), plus unused imports removed and a fixed import order |
+| `pom.xml`                     | sortPom                                                                                                              |
+| `db/migration/*.sql`          | DBeaver SQL formatter                                                                                                |
+| `*.yml`, `docker-compose.yml` | Jackson YAML                                                                                                         |
+| `README.md`, `docs/*.md`      | flexmark (not `docs/brainstorm/`, `docs/agent-discussion/` or `plans/`)                                              |
 
 - Formatter versions are pinned, so the same code always formats the same way.
 - Format a Flyway migration before its first commit. Reformatting it afterwards changes its checksum, and Flyway refuses to start.
@@ -296,5 +336,12 @@ Each rule above that changed after the first version of this file keeps the agen
 - **Mapping (§1).** Agent selection: "Put mapping in the record (`from(...)` / `toEntity()`), not in a separate mapper class." **Developer decision (after review, 2026-10-31):** MapStruct `*Mapper` interfaces own every Entity ↔ Dto mapping — overrides. **Reason:** DTOs stay pure data; mapping lives in one generated, testable place.
 - **Schema changes (§4).** Agent selection: Flyway migrations + `ddl-auto: validate`. **Developer decision (after review, 2026-10-31):** `validate` confirmed; every schema change via Flyway, `generate-ddl: false`, `clean-disabled: true`, never edit a committed migration, `request_audit` day partitions as the only runtime DDL — confirms + adds. **Reason:** one auditable schema history.
 - **Migration names (§4).** Agent selection: `V1__schema.sql`, `V2__seed.sql`. **Developer decision (after review, 2026-10-31):** `V<version>__<description>.sql`, sequential integer, verb-first lower snake_case — overrides. **Reason:** the file name says what the migration does.
+- **Package layout (§1).** Layout by role: `<domain>/{controller, service, service/impl, repository, entity, dto, mapper, config, util}`. **Developer decision (relayed by orchestrator, 2026-10-31):** adopted; existing files moved in one commit. **Reason:** a reader finds a class by its role, not by scanning one flat package.
 - **Constants (§1).** Agent selection: literals inline at each use, attribute keys inside `RequestAuditFilter`, SQL in repositories. **Developer decision (after review, 2026-10-31):** messages and shared names in `common.constants` `*Constants` classes; one-class literals stay private; SQL stays in repositories (confirms red-team #13) — overrides. **Reason:** one place per message and name, no drift between duplicates.
+- **Data access (§2).** Agent selection: JPA reads + JdbcClient writes (plan decision 1, A-024). **Developer decision (after review, 2026-10-31):** JPA only, incl. booking, idempotency, cancel, audit and partition DDL via native queries; tests may keep raw JDBC for lock/race harnesses — overrides. **Reason:** one data-access style; JPQL/@Query instead of hand-written JDBC.
+- **Data access, no locks (§2).** Agent selection: cancel locks the row with `SELECT ... FOR UPDATE` / `@Lock(PESSIMISTIC_WRITE)` (A-023 #2). **Developer decision (after review, 2026-10-31):** cancel is one atomic conditional `UPDATE ... WHERE status = CONFIRMED AND start_time > now`, idempotency completion is one conditional `UPDATE`, and there are no explicit locks anywhere — **overrides** the lock prescription. **Reason:** the developer's original rule, "do not lock table, use atomic conditional update".
+- **Boolean `isActive` is a breaking API change (§2).** Agent selection: persisted booleans named `active`. **Developer decision (after review, 2026-10-31):** the Java field, the repository methods and the JSON property become `isActive` (the column stays `active`) — **overrides**. This **breaks the API contract**: `GET /api/v1/dealerships/{id}` returns `isActive` instead of `active` on bays and technicians, and clients that read `active` must change. **Reason:** boolean fields start with `is`/`has`/`can`/`should`.
 - **Formatting (§5).** Agent selection: none (Checkstyle `MethodLength` only). **Developer decision (after review, 2026-10-31):** Spotless with google-java-format, imports, sortPom, SQL, YAML, Markdown; `check` fails `./mvnw verify` — adds. **Reason:** one format, enforced by the build.
+- **Java style (§5).** Agent selection: AOSP style (4-space), chosen by the KUSS-04 implementer to match the doc examples. **Developer decision (after review, 2026-10-31):** default Google style, 2-space, with the examples converted — overrides. **Reason:** keep the formatter's standard style; docs follow the code.
+- **Audit retention (§4).** Agent selection: 14-day rolling window. **Developer decision (after review, 2026-11-01):** six months (`Period.ofMonths(6)`), replacing 14 days — **overrides** the 14-day rolling window. Rows are still deleted after six months: partitions older than the cutoff are dropped and old default-partition rows deleted. **Reason:** audit data is kept for six months, not deleted early.
+

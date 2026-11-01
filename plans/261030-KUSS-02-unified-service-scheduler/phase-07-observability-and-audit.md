@@ -17,15 +17,17 @@
 - `DROP` never prunes `request_audit_default` → separate `DELETE`. Creating a day already present in DEFAULT fails → log, next day self-heals.
 - Metric and tag names live in `common/constants/MetricConstants` (`BOOKING_REQUESTS = "scheduler.booking.requests"`, `BOOKING_GIST_RETRIES`, `AUDIT_WRITES`, `AVAILABILITY_QUERY_DURATION`): registration and the ITs that read them share one name. <!-- Updated: constants decision 2026-10-31 -->
 - Micrometer names without `_total` (`scheduler.booking.requests`); Prometheus adds it → `scheduler_booking_requests_total` as in draft §9.
-- `service_type` tag must stay bounded without a lookup: request code only for outcomes reached after validation (`confirmed`, `KUSS_NO_CAPACITY`, `KUSS_VEHICLE_ALREADY_BOOKED`, `KUSS_IDEMPOTENCY_IN_FLIGHT`, `KUSS_IDEMPOTENCY_KEY_MISMATCH`), else `unknown`. <!-- Updated: Red Team #13 -->
+- `service_type` tag must stay bounded without a lookup: request code only for outcomes reached after validation (`confirmed`, `KUSS_NO_CAPACITY`, `KUSS_VEHICLE_ALREADY_BOOKED`, `KUSS_IDEMPOTENCY_IN_FLIGHT`, `KUSS_IDEMPOTENCY_KEY_MISMATCH`), else `unknown`. <!-- Updated: Red Team #13 --> <!-- Superseded: developer decision 2026-10-31 (F-1/H-1, review) -->
 - Audit scope matched on `request.getServletPath()` (decoded + normalized by the container), never raw `getRequestURI()` (encoded / `;matrix` variants would slip past a prefix check). <!-- Updated: Red Team #10 -->
 - All meters pre-registered at startup (every tag value) → tests read sums, never hit a missing meter. <!-- Updated: Red Team #11 -->
+- **Developer decision (after review, 2026-10-31):** JdbcClient in this phase is replaced by JPA (Spring Data @Query / entity persist + flush; EntityManager native queries only for partition DDL) — overrides. Reason: one data-access style.
+- **Developer decision (after review, 2026-10-31):** the IDEMPOTENCY_IN_FLIGHT and IDEMPOTENCY_KEY_MISMATCH results are thrown before the service type is validated, so they tag `service_type=unknown`; only `confirmed`, `KUSS_NO_CAPACITY` and `KUSS_VEHICLE_ALREADY_BOOKED` carry the request code (F-1). DD-2 adds `KUSS_SERVICE_BUSY` to the pre-registered result set, tagged `unknown`. Trace IDs: the MDC wiring alone is accepted; `traceId`/`spanId` appear on WARN/ERROR lines, no per-request INFO line — overrides the step 5 criterion. Reason: unvalidated input must never become a tag; no per-request log noise.
 
 ## Requirements
 - Audit row per audited request: `id`, `occurred_at` (`clock.instant().truncatedTo(MICROS)`), `request_id`, method (truncated to 10), path (servlet path, truncated to 255), status, `error_code` (request attribute `kuss_error_code`, null on 2xx), `duration_ms`, payload only for `POST /api/v1/appointments` (sanitized to `dealershipId, vehicleId, serviceTypeCode, desiredStartTime`; unparsable → null), null otherwise.
 - Executor `auditExecutor`: core 2, max 2, queue 1000, prefix `audit-`; rejection → `scheduler.audit.writes{status=failure}` + WARN logging the dropped `RequestAuditDto` (ids, method, path, status, code; no payload, no PII) so a dropped record leaves a trace <!-- Updated: Red Team #14 -->; wait for tasks on shutdown (5s).
 - Maintenance (startup via `SmartLifecycle.start()` with `getPhase() = Integer.MIN_VALUE`, i.e. before the embedded web server starts listening, so no request can land in DEFAULT for today first; plus `@Scheduled(cron = "0 5 0 * * *", zone = "UTC")`): create D..D+7 UTC partitions; drop partitions dated < D−14; delete default rows `occurred_at < D−14`; delete `idempotency_key` rows `created_at < now − 24h`. Every step try/catch + WARN, never throws; all statements idempotent (`IF [NOT] EXISTS`, plain `DELETE`) → safe on N instances.
-- Metrics: `scheduler.booking.requests{service_type,result}` (result = `confirmed` for 2xx incl. replay, else KUSS code; DTO-level 400s never reach the service → visible in `http.server.requests` + audit), `scheduler.booking.gist_retries` (phase 05), `scheduler.availability.query.duration` timer, `scheduler.audit.writes{status=success|failure}`.
+- Metrics: `scheduler.booking.requests{service_type,result}` (result = `confirmed` for 2xx incl. replay, else KUSS code; DTO-level 400s never reach the service → visible in `http.server.requests` + audit), `scheduler.booking.gist_retries` (phase 05), `scheduler.availability.query.duration` timer, `scheduler.audit.writes{status=success|failure}`. <!-- Superseded: developer decision 2026-10-31 (DD-1/DD-2, review) -->
 - Actuator: expose `health,info,prometheus`; probes on; readiness group includes `db`. Tracing via Brave bridge, no exporter → `traceId`/`spanId` in MDC. `prod` profile logs ECS JSON (phase 01). No PII in logs.
 
 ## Architecture
@@ -49,7 +51,7 @@ protected void doFilterInternal(HttpServletRequest request, HttpServletResponse 
 }
 ```
 ```sql
--- RequestAuditServiceImpl.write (@Transactional(propagation = REQUIRES_NEW), JdbcClient)
+-- RequestAuditServiceImpl.write (@Transactional(propagation = REQUIRES_NEW), JdbcClient) <!-- Superseded: developer decision 2026-10-31, JPA only (see Conventions table) -->
 INSERT INTO request_audit (id, occurred_at, request_id, http_method, path, http_status, error_code, duration_ms, request_payload)
 VALUES (:id, :occurredAt, :requestId, :httpMethod, :path, :httpStatus, :errorCode, :durationMs, CAST(:payload AS jsonb))
 -- MaintenanceServiceImpl
@@ -87,7 +89,7 @@ Modify:
 3. `MetricsIT`: booking 201 → `requests{service_type=OIL_CHANGE,result=confirmed}` +1; full slot → `result=KUSS_NO_CAPACITY`; `serviceTypeCode=ZZZ` → `service_type=unknown,result=KUSS_RESOURCE_NOT_FOUND`; availability call → timer count +1; `/actuator/prometheus` contains `scheduler_booking_requests_total` and `scheduler_audit_writes_total`.
    No `ActuatorIT` (framework wiring; Red Team #13): probes and tracing are checked by curl/log in Success Criteria.
 4. Implement `AuditConfiguration` executor, `RequestAuditDto`, `RequestAuditService`/`Impl`, filter extension, `MaintenanceService`/`Impl`, metric wiring, actuator config.
-5. `./mvnw verify` green; `podman compose up --build` with `SPRING_PROFILES_ACTIVE=prod` → JSON log lines contain `traceId` and `requestId`; `psql` shows audit rows.
+5. `./mvnw verify` green; `podman compose up --build` with `SPRING_PROFILES_ACTIVE=prod` → JSON log lines contain `traceId` and `requestId`; `psql` shows audit rows. <!-- Superseded: developer decision 2026-10-31 (trace IDs, review) -->
 
 ## Todo List
 - [ ] `RequestAuditIT`, `PartitionMaintenanceIT`, `MetricsIT` red
