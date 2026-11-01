@@ -357,6 +357,7 @@ Note: `code-standards.md` also overrides parts of ponytail explicitly: `*Service
   - `BookingConcurrencyIT` ran 3 times, 4/4 each time. The deadlock counts were 2, 82 and 35 `40P01` per run, taken from Hibernate WARN lines.
   - Greps confirmed: JPA only in `src/main`, no bay/tech locks, no inline comments, nothing pushed.
 - **Decision alignment.** Every recorded decision was checked against the code, 77 rows in all: **70 ALIGNED, 5 PARTIAL, 0 DEVIATION, 2 N-A**. Both agents agreed on every status.
+- **Later correction (2026-10-31, PR #10 review):** this table missed the cancel row lock. See the 2026-10-31 rows below. History above is kept as written.
 - **Findings:** 0 Critical, **1 High**, 2 Medium, 9 Low.
   - **H-1:** user input could become a Prometheus tag through the idempotency error paths (unbounded cardinality).
   - The code copied a wrong list from the plan (RT #13c) exactly. So the defect was in an agent-written plan, and the implementer followed it faithfully.

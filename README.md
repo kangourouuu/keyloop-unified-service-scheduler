@@ -161,7 +161,7 @@ Dated evidence for every claim is in [`docs/ai-collaboration-log.md`](docs/ai-co
 - **An orchestrator delegates by complexity:**
   - Antigravity (Gemini) for brainstorming and independent cross-review.
   - Claude Opus for design review, planning, debugging and the final code review.
-  - Claude Haiku workers for implementation, which is mechanical once the plan names exact files and tests. Two of them ran in parallel worktrees (phase 7a).
+  - Claude Haiku workers for the implementation phases, which were mechanical once the plan named exact files and tests. Claude Sonnet workers did the fix batches after PR review, and Claude Opus did the reviews and debugging. Two of them ran in parallel worktrees (phase 7a).
   - A Claude docs worker for these documents.
   - Each worker owns a fixed set of files.
 - **Written rules instead of chat memory:** `CLAUDE.md`, `.claude/rules/`, the `plan-story`/`implement`/`review-code` skills and `docs/code-standards.md`. `.githooks/` and `./mvnw verify` (Spotless, Checkstyle, tests) enforce them mechanically.
@@ -180,7 +180,7 @@ Dated evidence for every claim is in [`docs/ai-collaboration-log.md`](docs/ai-co
   - It added bay/technician lock ordering to stop a deadlock storm. I reverted it and moved it to the roadmap.
   - An Opus debugger then found the real root cause: a livelock. PostgreSQL breaks one wait cycle per `deadlock_timeout` (median gap 101 ms), and victims retrying at once re-knotted it.
   - The fix is a randomized 1.6–3.2 s backoff inside a 10 s deadline. It went 5/5 green with zero `503`s.
-- **Cross-review:** Opus and Gemini checked 77 recorded decisions against the code: 70 aligned, 0 deviations, 1 High finding. That finding (user input as a metric tag) came from the plan, not the implementer. I made the contract calls: the 10 s deadline, `503 KUSS_SERVICE_BUSY`, and trace ids without per-request log lines.
+- **Cross-review:** Opus and Gemini checked 77 recorded decisions against the code and reported 70 aligned, 0 deviations, 1 High finding. That summary missed a deviation: the cancel path used a row lock (`PESSIMISTIC_WRITE`). A later line-level review of PR #10 found it, with 9 Approach A and 18 convention findings in total. All are fixed: cancel is one conditional `UPDATE` with no explicit locks. That finding (user input as a metric tag) came from the plan, not the implementer. I made the contract calls: the 10 s deadline, `503 KUSS_SERVICE_BUSY`, and trace ids without per-request log lines.
 
 ### Ensuring final quality
 

@@ -35,13 +35,13 @@ Talking points, not a script. They follow the five bullets in the PDF. Target le
 
 - **Setup:**
   - I wrote the draft first.
-  - An orchestrator delegates by complexity: Gemini brainstorms and cross-reviews, Claude Opus reviews and debugs, Claude Haiku workers implement (two in parallel for phase 7a).
+  - An orchestrator delegates by complexity: Gemini brainstorms and cross-reviews, Claude Opus reviews and debugs, Claude Haiku workers implemented the phases, Claude Sonnet workers did the fix batches, and Opus reviewed (two in parallel for phase 7a).
   - Every decision is recorded as agent selection → my decision → reason.
 - **AI challenged me:** impossible traffic sizing, and "one technician, three cars".
 - **Agents checked each other:**
   - Claude found the unreachable `IN_FLIGHT` path.
   - Gemini found the Hibernate pitfall and a partition race.
-  - Opus + Gemini checked 77 decisions against the code: 70 aligned, 0 deviations, 1 High finding (from the plan).
+  - Opus + Gemini reported 70 aligned, 0 deviations. A later line-level PR review found the cancel lock that the summary missed, plus 27 other findings, and all are fixed.
 - **I overrode and corrected:**
   - Idempotency-Key back in, audit and error catalog added, 15 red-team findings decided one by one.
   - Podman, not Docker.
