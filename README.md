@@ -180,7 +180,7 @@ Dated evidence for every claim is in [`docs/ai-collaboration-log.md`](docs/ai-co
   - It added bay/technician lock ordering to stop a deadlock storm. I reverted it and moved it to the roadmap.
   - An Opus debugger then found the real root cause: a livelock. PostgreSQL breaks one wait cycle per `deadlock_timeout` (median gap 101 ms), and victims retrying at once re-knotted it.
   - The fix is a randomized 1.6–3.2 s backoff inside a 10 s deadline. It went 5/5 green with zero `503`s.
-- **Cross-review:** Opus and Gemini checked 77 recorded decisions against the code and reported 70 aligned, 0 deviations, 1 High finding. That summary missed a deviation: the cancel path used a row lock (`PESSIMISTIC_WRITE`). A later line-level review of PR #10 found it, with 9 Approach A and 18 convention findings in total. All are fixed: cancel is one conditional `UPDATE` with no explicit locks. That finding (user input as a metric tag) came from the plan, not the implementer. I made the contract calls: the 10 s deadline, `503 KUSS_SERVICE_BUSY`, and trace ids without per-request log lines.
+- **Cross-review:** Opus and Gemini checked 77 recorded decisions against the code and reported 70 aligned, 0 deviations, 1 High finding. That summary missed a deviation: the cancel path used a row lock (`PESSIMISTIC_WRITE`). A later line-level review of PR #10 found it, with 9 Approach A and 18 convention findings in total. All are fixed: cancel is one conditional `UPDATE` with no explicit locks. The 1 High finding (user input as a metric tag) came from the plan, not the implementer. I made the contract calls: the 10 s deadline, `503 KUSS_SERVICE_BUSY`, and trace ids without per-request log lines.
 
 ### Ensuring final quality
 

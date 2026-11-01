@@ -41,7 +41,7 @@ Talking points, not a script. They follow the five bullets in the PDF. Target le
 - **Agents checked each other:**
   - Claude found the unreachable `IN_FLIGHT` path.
   - Gemini found the Hibernate pitfall and a partition race.
-  - Opus + Gemini reported 70 aligned, 0 deviations. A later line-level PR review found the cancel lock that the summary missed, plus 27 other findings, and all are fixed.
+  - Opus + Gemini reported 70 aligned, 0 deviations. A later line-level PR review found the cancel lock that the summary missed, among 9 Approach A and 18 convention findings, and all are fixed.
 - **I overrode and corrected:**
   - Idempotency-Key back in, audit and error catalog added, 15 red-team findings decided one by one.
   - Podman, not Docker.
