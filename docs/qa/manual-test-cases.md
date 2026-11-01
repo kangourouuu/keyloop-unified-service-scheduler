@@ -850,7 +850,7 @@ DATE=$(date -v+7d +%F 2>/dev/null || date -d '+7 days' +%F); echo "DATE=$DATE"
 
 ## 12. Swagger UI test script
 
-Open `http://localhost:8080/swagger-ui.html`. Wherever a step says `DATE`, type the DATE printed at the start of the run (§0.2) in the form `YYYY-MM-DD`; in the JSON bodies replace `DATE` the same way and keep the rest of the text. Do the cases in order, once, after one RESET. Ids and keys below are exact; copy them as written.
+Open `http://localhost:8080/swagger-ui.html`. Wherever a step says `DATE`, type the DATE printed at the start of the run (§0.2) in the form `YYYY-MM-DD`; in the JSON bodies replace `DATE` the same way and keep the rest of the text. Example: if the printed DATE is `2026-11-08`, then `DATET10:00:00Z` in a step becomes `2026-11-08T10:00:00Z`. Do the cases in order, once, after one RESET. Ids and keys below are exact; copy them as written.
 
 ### SW-1  Swagger UI opens  (cases: DH-01)
 - **Before you start:** the server is running.
