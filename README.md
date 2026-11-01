@@ -142,6 +142,17 @@ curl -s -X POST $BASE/api/v1/appointments/$ID/cancel -H "Idempotency-Key: cancel
 
 **No authentication in V1:** anyone can read all data and cancel any appointment, and there is no rate limiting (`docs/system-design.md` §8).
 
+## Manual testing (interview)
+
+[`docs/qa/manual-test-cases.md`](docs/qa/manual-test-cases.md) is a copy-paste test script: 116 cases run by curl or Swagger UI on the same fixed seed data (its §0).
+
+1. Start the stack as in [Run](#run).
+2. Clear bookings and idempotency keys with the reset in its §0.1. The container name comes from the folder name, so check it with `podman ps` (or `docker ps`) and edit the command if it differs.
+3. Print the test date from §0.2 and keep it for Swagger.
+4. Run sections 1 to 10 in order, once per reset. Section 11 lists the mismatches found between the docs, the code and the brief.
+
+For Swagger steps, see §0.5 of that file.
+
 ## Quality gates
 
 1. **Before every commit:** `./mvnw spotless:apply`, then `./mvnw verify` green. Never skip or disable a failing test.
