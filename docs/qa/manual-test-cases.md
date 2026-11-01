@@ -693,7 +693,7 @@ T() { date -v"$1"d +%F 2>/dev/null || date -d "$1 days" +%F; }
    ```sh
    for o in -365 -366 +90 +91; do curl -s "$BASE/api/v1/dealerships/$LONDON/appointments?date=$(T $o)" | jq -c "{o:\"$o\",r:(if type==\"array\" then length else {status,detail} end)}"; done
    ```
-   Expect `-365` -> `0`; `-366` -> 400 `Date is more than 365 days back.`; `+90` -> `0`; `+91` -> 400 `Date is more than 90 days ahead.` Live: RAN, pass.
+   Expect `-365` -> `0`; `-366` -> 400 `Date is more than 365 days back.`; `+90` -> `0` when no earlier case booked London on that day, or `1` after BK-10 (which books London on today+90 in the same run); `+91` -> 400 `Date is more than 90 days ahead.` Live: RAN, pass.
 6. **RD-06 New York local day list**
    ```sh
    curl -s "$BASE/api/v1/dealerships/$NY/appointments?date=$DATE" | jq -c '.[]|{startTime,status}'
@@ -842,6 +842,6 @@ DATE=$(date -v+7d +%F 2>/dev/null || date -d '+7 days' +%F); echo "DATE=$DATE"
 - **M4 (docs aligned to code; code unchanged):** fixed in README.md (`X-Request-Id` bullet). The server always assigns the id (RequestAuditFilter.java:61-64); a client-sent `X-Request-Id` is ignored and the response carries the server's id.
 - **M5 (docs aligned to code; code unchanged):** fixed in docs/system-design.md §4.2 ("Check order in one attempt"). Order: key claim, 404s (dealership, vehicle, service type), horizon then slot 400s, vehicle 409, capacity 409 (BookingAttemptHelper.java:56-60, 73-82, 100-102, 130-142). A request that is unknown-vehicle and off-grid returns 404.
 - **M6 (docs aligned to code; code unchanged):** fixed in docs/system-design.md §4.2 (Replay and mismatch). The hash check runs before the in-flight check (IdempotencyServiceImpl.java:100-106), so IN_FLIGHT from a stored row needs an identical body; ID-10 builds the hash for that reason. The `23505` race (IdempotencyServiceImpl.java:91-95) gives IN_FLIGHT without a hash check.
-- **BK-17 (open question):** a `desiredStartTime` without an offset is expected to give 400 from the code, but the case is unverified live; record a finding if it returns 201.
+- **BK-17 (resolved):** a `desiredStartTime` without an offset returns 400 `Malformed request.` (verified live, 2026-11-01). It does not return 201.
 - Docs and code agree on: date bounds (src/main/java/com/keyloop/scheduler/common/util/TimeSlotUtils.java:21-22, 73, 93), 24 h TTL (IdempotencyServiceImpl.java:72-73), `isActive` on bays and technicians (ServiceBayDto.java:7, TechnicianDto.java:8), `Retry-After: 1` (SchedulerGlobalHandler.java:40, 48), slots with zero capacity omitted (AvailabilitySweepUtils.java:38).
 - Brief ambiguity (assumptions, not defects): the brief gives no grid, opening-hours or lead-time rule; the design assumes a 30-minute grid anchored at opening, a 90-day horizon, and a customer derived from the vehicle (the request carries no customer id).
