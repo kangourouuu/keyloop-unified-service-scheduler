@@ -201,6 +201,16 @@ sequenceDiagram
     API-->>Client: 201, replay, or ProblemDetail
 ```
 
+**Check order in one attempt** (after the controller's header pattern and `@Valid` body checks):
+
+1. **Key claim** (`BookingAttemptHelper.java:56-60`, `IdempotencyServiceImpl.java:48-56`): a stored response replays, a mismatch gives `422`, an open claim gives `409 KUSS_IDEMPOTENCY_IN_FLIGHT`.
+2. **404 lookups** (`BookingAttemptHelper.java:73-75`): dealership, then vehicle, then active service type.
+3. **400 horizon, then slot** (`BookingAttemptHelper.java:79`, `130-142`): the date at most 90 days ahead (`TimeSlotUtils.java:72-82`), then the start in `candidateStarts`.
+4. **Vehicle `409`** (`BookingAttemptHelper.java:80-82`): `KUSS_VEHICLE_ALREADY_BOOKED`.
+5. **Capacity `409`** (`BookingAttemptHelper.java:100-102`): `KUSS_NO_CAPACITY`.
+
+So a request with an unknown vehicle and an off-grid start gets `404`, not `400`. The files are under `src/main/java/com/keyloop/scheduler/appointment/service/impl/`.
+
 **Idempotency, relative to the retry loop:**
 
 - The key is claimed first in **every** attempt, inside that attempt's transaction, before validation and candidate queries (C-017 Gap 2).
@@ -208,6 +218,7 @@ sequenceDiagram
   - A live row with the same SHA-256 of the canonical request replays the stored status and body.
   - A different hash gives `422 KUSS_IDEMPOTENCY_KEY_MISMATCH`.
   - A row without a response gives `409 KUSS_IDEMPOTENCY_IN_FLIGHT`.
+  - The hash is compared first (`IdempotencyServiceImpl.java:100-106`): a same-key request with a different body gets `422 KUSS_IDEMPOTENCY_KEY_MISMATCH` before the in-flight check runs, so a stored row answers `409 KUSS_IDEMPOTENCY_IN_FLIGHT` only to an identical body. The `23505` race below (`IdempotencyServiceImpl.java:91-95`) is different: it gives `409` without comparing hashes.
 - **The canonical request** is `POST /api/v1/appointments|dealershipId|vehicleId|serviceTypeCode|desiredStartTime as Instant`. Whitespace, field order or an equivalent offset therefore replay instead of returning `422`.
 - **Concurrent requests with the same key:** the second claim INSERT blocks on the first's uncommitted row.
   - If the holder commits, the waiter gets `23505` and `409 KUSS_IDEMPOTENCY_IN_FLIGHT`.
@@ -330,11 +341,11 @@ Any endpoint can also return `500 KUSS_INTERNAL_ERROR` on an unexpected error.
 
 `DealershipDetailDto` lists `bays` as `{id, bayCode, isActive}` and `technicians` as `{id, fullName, isActive, skillCodes}`. **Breaking API change in KUSS-04:** the property was `active` before; clients reading `active` must switch to `isActive` (`CatalogApiIT` asserts the new name).
 
-`AppointmentDto` is `{id, dealershipId, customerId, vehicleId, serviceBayId, technicianId, serviceTypeCode, startTime, endTime, status, createdAt, cancelledAt}`, with times as UTC `Instant`. OpenAPI is at `/v3/api-docs`, and Swagger UI at `/swagger-ui.html` (springdoc 3.2.0).
+`AppointmentDto` is `{id, dealershipId, customerId, vehicleId, serviceBayId, technicianId, serviceTypeCode, startTime, endTime, status, createdAt, cancelledAt}`, with times as UTC `Instant`. OpenAPI is at `/v3/api-docs`, and Swagger UI at `/swagger-ui.html` (springdoc 3.2.0). The OpenAPI document declares the success responses only, each as the springdoc default `200`: no controller has an `@ApiResponse`, and booking and cancel return `ResponseEntity` with a runtime status (`AppointmentController.java:33-54`), so booking shows `200` though it returns `201`. The **Errors** column above, the README error table and §4.8 document the error responses; they are not in the OpenAPI document. `/error` is also listed as an OpenAPI path.
 
 ### 4.8 Error catalog (`common/error/ErrorCode`)
 
-Every error is `application/problem+json` with `type`, `title`, `status`, `detail`, `instance`, `code` and `requestId`. That includes `/error` (`SchedulerErrorController`) and requests Tomcat rejects before the app (`ProblemDetailErrorReportValve`); the Tomcat-level body has no `requestId` and no `instance`, and those requests are not audited.
+Every error is `application/problem+json`. App-level errors carry `title`, `status`, `detail`, `instance`, `code` and `requestId`, and no `type`: `SchedulerGlobalHandler.respond` (`SchedulerGlobalHandler.java:180-193`) never sets one, so the `about:blank` default is omitted. That includes `/error`, because `SchedulerErrorController` (`SchedulerErrorController.java:23-39`) throws into that handler. Requests Tomcat rejects before the app get `ProblemDetailErrorReportValve`'s body (`ProblemDetailErrorReportValve.java:23-26`): `type` `about:blank`, `title`, `status`, `detail` and `code`, with no `instance` and no `requestId`, and those requests are not audited.
 
 |                Code                | HTTP |                                                                                                                                      When                                                                                                                                       |
 |------------------------------------|------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|

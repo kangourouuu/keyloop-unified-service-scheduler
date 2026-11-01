@@ -61,7 +61,7 @@ docker compose down -v        # or: podman compose down -v
 - **`db`:** PostgreSQL 17, `kuss`/`kuss`/`kuss`, published on `127.0.0.1:5432`, `deadlock_timeout=100ms`. That setting is **required for every deployment**, not only this compose file: the 1.6–3.2 s deadlock backoff is sized for it.
 - **`app`:** the multi-stage image, port `8080`, profile `prod`: ECS JSON logs, Hikari pool 20, 3 s connection timeout. Port 8080 is published on all interfaces, and there is no auth, so run it on a trusted network.
 - On start, Flyway creates the schema and the seed data.
-- Swagger UI is at <http://localhost:8080/swagger-ui.html> and the OpenAPI document at <http://localhost:8080/v3/api-docs>.
+- Swagger UI is at <http://localhost:8080/swagger-ui.html> and the OpenAPI document at <http://localhost:8080/v3/api-docs>. The OpenAPI document declares only the success responses, as the springdoc default `200` (the controllers have no `@ApiResponse`), so booking shows `200` though it returns `201`. The error responses are documented in the error table below and in `docs/system-design.md` §4.8, not in the OpenAPI document.
 - Health and metrics are at `/actuator/health` (`/liveness`, `/readiness`) and `/actuator/prometheus`.
 
 ## API walkthrough (curl)
@@ -117,8 +117,8 @@ curl -s "$BASE/api/v1/dealerships/$LONDON/appointments?date=$DATE" | jq 'map({id
 curl -s -X POST $BASE/api/v1/appointments/$ID/cancel -H "Idempotency-Key: cancel-$KEY" | jq '{id, status, cancelledAt}'
 ```
 
-- Every response that reaches the app carries `X-Request-Id`, which is also the `requestId` in error bodies and the key of the `request_audit` row.
-- Errors are RFC 9457 `application/problem+json`: `{type, title, status, detail, instance, code, requestId}`. `/error` and requests Tomcat rejects before the app (bad encoding, oversized header) answer the same way, but the Tomcat-level body has no `requestId`.
+- Every response that reaches the app carries `X-Request-Id`, which is also the `requestId` in error bodies and the key of the `request_audit` row. The server always assigns the id (a new UUID in `RequestAuditFilter`, `src/main/java/com/keyloop/scheduler/common/web/RequestAuditFilter.java:61-64`); a client-sent `X-Request-Id` header is ignored, and the response carries the server's id.
+- Errors are RFC 9457 `application/problem+json`. App-level errors, `/error` included, have `{title, status, detail, instance, code, requestId}` and no `type` (the `about:blank` default is omitted; `SchedulerGlobalHandler.respond`, `src/main/java/com/keyloop/scheduler/common/error/SchedulerGlobalHandler.java:180-193`). Requests Tomcat rejects before the app (bad encoding, oversized header) get `{type: "about:blank", title, status, detail, code}`, with no `instance` and no `requestId` (`ProblemDetailErrorReportValve`, `src/main/java/com/keyloop/scheduler/common/web/ProblemDetailErrorReportValve.java:23-26`).
 - **Breaking change in KUSS-04:** `GET /api/v1/dealerships/{id}` returns `isActive` (was `active`) on each of `bays` and `technicians`.
 
 |                Code                |                              HTTP                              |                                                                                                    When                                                                                                    |
