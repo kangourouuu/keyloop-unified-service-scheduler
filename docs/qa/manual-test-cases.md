@@ -78,12 +78,12 @@ VEHICLE=00000000-0000-0000-0005-000000000001
 DATE=$(date -v+7d +%F 2>/dev/null || date -d '+7 days' +%F); echo "DATE=$DATE"
 ```
 
-1. **CT-01 List dealerships** (Swagger: GET /api/v1/dealerships)
+1. **CT-01 List dealerships** (Swagger: see SW-2 in §12.)
    ```sh
    curl -s $BASE/api/v1/dealerships | jq
    ```
    Expect 200; 2 items; keys `id,name,timezone,openTime,closeTime`; London Central `Europe/London` 08:00:00-18:00:00, New York Midtown `America/New_York` 08:00:00-17:00:00. Live: RAN, pass.
-2. **CT-02 Dealership detail London, `isActive`** (Swagger: GET /api/v1/dealerships/{dealershipId})
+2. **CT-02 Dealership detail London, `isActive`** (Swagger: see SW-3 in §12.)
    ```sh
    curl -s $BASE/api/v1/dealerships/$LONDON | jq '{bays:[.bays[]|{bayCode,isActive}],t:[.technicians[]|{fullName,isActive,skillCodes}],anyActive:([.bays[],.technicians[]]|any(has("active"))),allIsActive:([.bays[],.technicians[]]|all(has("isActive")))}'
    ```
@@ -127,7 +127,7 @@ DATE=$(date -v+7d +%F 2>/dev/null || date -d '+7 days' +%F); echo "DATE=$DATE"
 T() { date -v"$1"d +%F 2>/dev/null || date -d "$1 days" +%F; }
 ```
 
-1. **AV-01 London OIL_CHANGE** (Swagger: GET …/availability, date=DATE, serviceType=OIL_CHANGE)
+1. **AV-01 London OIL_CHANGE** (Swagger: see SW-4 in §12.)
    ```sh
    curl -s "$BASE/api/v1/dealerships/$LONDON/availability?date=$DATE&serviceType=OIL_CHANGE" | jq -c '{timezone,n:(.slots|length),first:.slots[0],last:.slots[-1]}'
    ```
@@ -212,7 +212,7 @@ J() { sed -n '/^{/p' /tmp/kuss-last | jq -r "$1"; }
 
 `bk KEY DEALERSHIP VEHICLE SERVICE START` prints the JSON body it sends (for Swagger), the status line, `X-Request-Id` and the response JSON.
 
-1. **BK-01 Happy path** (Swagger: POST /api/v1/appointments, header `Idempotency-Key: case-bk-01`)
+1. **BK-01 Happy path** (Swagger: see SW-5 in §12.)
    ```sh
    bk case-bk-01 $LONDON $(V 1) OIL_CHANGE ${DATE}T10:00:00Z; ID_BK01=$(J .id); echo $ID_BK01
    ```
@@ -336,7 +336,7 @@ J() { sed -n '/^{/p' /tmp/kuss-last | jq -r "$1"; }
    ```sh
    curl -s -i -X POST $BASE/api/v1/appointments -H 'Content-Type: application/json' -d "{\"dealershipId\":\"$LONDON\",\"vehicleId\":\"$(V 12)\",\"serviceTypeCode\":\"OIL_CHANGE\",\"desiredStartTime\":\"${DATE}T08:00:00Z\"}"
    ```
-   Expect 400, `KUSS_IDEMPOTENCY_KEY_MISSING`, `requestId` present. (Swagger: clear the header field.)
+   Expect 400, `KUSS_IDEMPOTENCY_KEY_MISSING`, `requestId` present. Swagger: see SW-6 in §12.
 2. **ID-02 Illegal characters in key**
    ```sh
    curl -s -i -X POST $BASE/api/v1/appointments -H 'Content-Type: application/json' -H 'Idempotency-Key: bad key!' -d "{\"dealershipId\":\"$LONDON\",\"vehicleId\":\"$(V 12)\",\"serviceTypeCode\":\"OIL_CHANGE\",\"desiredStartTime\":\"${DATE}T08:00:00Z\"}"
@@ -594,7 +594,7 @@ cx() { curl -s -i -X POST $BASE/api/v1/appointments/$2/cancel -H "Idempotency-Ke
 J() { sed -n '/^{/p' /tmp/kuss-last | jq -r "$1"; }
 ```
 
-1. **CN-01 Cancel a confirmed future appointment** (Swagger: POST /api/v1/appointments/{appointmentId}/cancel, header `Idempotency-Key: case-cn-01-cancel`)
+1. **CN-01 Cancel a confirmed future appointment** (Swagger: see SW-8 in §12.)
    ```sh
    bk case-cn-01 $NY $(V 22) OIL_CHANGE ${DATE}T14:30:00-05:00; ID22=$(J .id)
    cx case-cn-01-cancel $ID22
@@ -669,7 +669,7 @@ DATE=$(date -v+7d +%F 2>/dev/null || date -d '+7 days' +%F); echo "DATE=$DATE"
 T() { date -v"$1"d +%F 2>/dev/null || date -d "$1 days" +%F; }
 ```
 
-1. **RD-01 GET appointment by id** (Swagger: GET /api/v1/appointments/{appointmentId}; use `ID_BK01` printed by BK-01)
+1. **RD-01 GET appointment by id** (Swagger: see SW-7 in §12.)
    ```sh
    curl -s $BASE/api/v1/appointments/$ID_BK01 | jq
    ```
@@ -785,7 +785,7 @@ VEHICLE=00000000-0000-0000-0005-000000000023
 DATE=$(date -v+7d +%F 2>/dev/null || date -d '+7 days' +%F); echo "DATE=$DATE"
 ```
 
-1. **DH-01 Swagger UI**
+1. **DH-01 Swagger UI** (Swagger: see SW-1 in §12.)
    ```sh
    curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' $BASE/swagger-ui.html; curl -s -o /dev/null -w '%{http_code}\n' $BASE/swagger-ui/index.html
    ```
@@ -825,7 +825,7 @@ DATE=$(date -v+7d +%F 2>/dev/null || date -d '+7 days' +%F); echo "DATE=$DATE"
    $PSQL -c "select count(*) from request_audit where path like '/actuator%' or path like '/swagger%' or path like '/v3%'"
    ```
    Expect `0`. Not run.
-9. **DH-09 Swagger end-to-end** (Swagger UI only; key `case-dh-09`)
+9. **DH-09 Swagger end-to-end** (Swagger UI only; key `case-dh-09`; Swagger: see SW-9 in §12.)
    1. GET availability: LONDON, date=DATE, serviceType=OIL_CHANGE; note a free slot, e.g. `DATET11:30:00Z` with `availableCapacity>=1`.
    2. POST /api/v1/appointments, header `Idempotency-Key: case-dh-09`, body `{"dealershipId":"00000000-0000-0000-0001-000000000001","vehicleId":"00000000-0000-0000-0005-000000000023","serviceTypeCode":"OIL_CHANGE","desiredStartTime":"DATET11:30:00Z"}` (type DATE). Expect 201, `status=CONFIRMED`; copy `id`.
    3. GET /api/v1/appointments/{id}: expect 200 with the same fields.
@@ -845,3 +845,137 @@ DATE=$(date -v+7d +%F 2>/dev/null || date -d '+7 days' +%F); echo "DATE=$DATE"
 - **BK-17 (resolved):** a `desiredStartTime` without an offset returns 400 `Malformed request.` (verified live, 2026-11-01). It does not return 201.
 - Docs and code agree on: date bounds (src/main/java/com/keyloop/scheduler/common/util/TimeSlotUtils.java:21-22, 73, 93), 24 h TTL (IdempotencyServiceImpl.java:72-73), `isActive` on bays and technicians (ServiceBayDto.java:7, TechnicianDto.java:8), `Retry-After: 1` (SchedulerGlobalHandler.java:40, 48), slots with zero capacity omitted (AvailabilitySweepUtils.java:38).
 - Brief ambiguity (assumptions, not defects): the brief gives no grid, opening-hours or lead-time rule; the design assumes a 30-minute grid anchored at opening, a 90-day horizon, and a customer derived from the vehicle (the request carries no customer id).
+
+---
+
+## 12. Swagger UI test script
+
+Open `http://localhost:8080/swagger-ui.html`. Wherever a step says `DATE`, type the DATE printed at the start of the run (§0.2) in the form `YYYY-MM-DD`; in the JSON bodies replace `DATE` the same way and keep the rest of the text. Do the cases in order, once, after one RESET. Ids and keys below are exact; copy them as written.
+
+### SW-1  Swagger UI opens  (cases: DH-01)
+- **Before you start:** the server is running.
+- **Steps:**
+  1. In the browser address bar, type `http://localhost:8080/swagger-ui.html` and press Enter.
+- **Expect:** the address bar changes to `http://localhost:8080/swagger-ui/index.html`; the Swagger page loads and lists the operations.
+- **Record:** write PASS or FAIL and what you saw.
+
+### SW-2  List dealerships  (cases: CT-01)
+- **Before you start:** the Swagger page is open.
+- **Steps:**
+  1. Open the operation: tag dealership, `GET /api/v1/dealerships`.
+  2. Click **Try it out**.
+  3. Click **Execute**.
+- **Expect:** HTTP 200; the body has 2 items:
+  - `name` = `London Central`, `timezone` = `Europe/London`, `openTime` = `08:00:00`, `closeTime` = `18:00:00`
+  - `name` = `New York Midtown`, `timezone` = `America/New_York`, `openTime` = `08:00:00`, `closeTime` = `17:00:00`
+- **Record:** write PASS or FAIL and the status you saw.
+
+### SW-3  Dealership detail, London  (cases: CT-02)
+- **Before you start:** the Swagger page is open.
+- **Steps:**
+  1. Open the operation: tag dealership, `GET /api/v1/dealerships/{dealershipId}`.
+  2. Click **Try it out**.
+  3. Type into `dealershipId`: `00000000-0000-0000-0001-000000000001`
+  4. Click **Execute**.
+- **Expect:** HTTP 200;
+  - `bays` has 4 items; each has `isActive`; `BAY-04` has `isActive` = `false`, the other three `true`
+  - `technicians` has 5 items; each has `isActive` and `skillCodes` (as in §0.3)
+  - no field named `active`
+- **Record:** write PASS or FAIL and the status you saw.
+
+### SW-4  Availability, London OIL_CHANGE  (cases: AV-01)
+- **Before you start:** the Swagger page is open.
+- **Steps:**
+  1. Open the operation: tag availability, `GET /api/v1/dealerships/{dealershipId}/availability`.
+  2. Click **Try it out**.
+  3. Type into `dealershipId`: `00000000-0000-0000-0001-000000000001`
+  4. Type into `date`: `DATE`
+  5. Type into `serviceType`: `OIL_CHANGE`
+  6. Click **Execute**.
+- **Expect:** HTTP 200;
+  - `timezone` = `Europe/London`
+  - `slots` is a list of 20 items
+  - first slot `startTime` = `DATET08:00:00Z`, `availableCapacity` = `3`
+  - last slot `startTime` = `DATET17:30:00Z`, `availableCapacity` = `3`
+- **Record:** write PASS or FAIL and the status you saw.
+
+### SW-5  Book an oil change  (cases: BK-01)
+- **Before you start:** run the RESET in §0.1 first (key `case-bk-01` is used once per RESET).
+- **Steps:**
+  1. Open the operation: tag appointment, `POST /api/v1/appointments`.
+  2. Click **Try it out**.
+  3. Type into `Idempotency-Key`: `case-bk-01`
+  4. Type into the request body (replace everything):
+     `{"dealershipId":"00000000-0000-0000-0001-000000000001","vehicleId":"00000000-0000-0000-0005-000000000001","serviceTypeCode":"OIL_CHANGE","desiredStartTime":"DATET10:00:00Z"}`
+  5. Click **Execute**.
+- **Expect:** HTTP 201;
+  - `status` = `CONFIRMED`
+  - `startTime` = `DATET10:00:00Z`
+  - `endTime` = `DATET10:30:00Z`
+  - `serviceTypeCode` = `OIL_CHANGE`
+  - `vehicleId` = `00000000-0000-0000-0005-000000000001`
+  - `customerId` = `00000000-0000-0000-0004-000000000001`
+  - `serviceBayId` is one of `00000000-0000-0000-0002-000000000101`, `00000000-0000-0000-0002-000000000102`, `00000000-0000-0000-0002-000000000103`
+  - `technicianId` is one of `00000000-0000-0000-0003-000000000101`, `...000000000102`, `...000000000103`, `...000000000104` (London OIL_CHANGE list, §0.3)
+  - `cancelledAt` = `null`
+  - Write down the returned `id`: this is ID_BK01.
+- **Record:** write PASS or FAIL and the status you saw; write ID_BK01.
+
+### SW-6  Missing Idempotency-Key  (cases: ID-01)
+- **Before you start:** the Swagger page is open.
+- **Steps:**
+  1. Open the operation: tag appointment, `POST /api/v1/appointments`.
+  2. Click **Try it out**.
+  3. Leave `Idempotency-Key` empty (delete any value in the field).
+  4. Type into the request body (replace everything):
+     `{"dealershipId":"00000000-0000-0000-0001-000000000001","vehicleId":"00000000-0000-0000-0005-000000000012","serviceTypeCode":"OIL_CHANGE","desiredStartTime":"DATET08:00:00Z"}`
+  5. Click **Execute**.
+- **Expect:** HTTP 400;
+  - `code` = `KUSS_IDEMPOTENCY_KEY_MISSING`
+  - `requestId` is present
+  - no appointment is created
+- **Record:** write PASS or FAIL and the status you saw.
+
+### SW-7  Read the appointment  (cases: RD-01)
+- **Before you start:** SW-5 gave you ID_BK01.
+- **Steps:**
+  1. Open the operation: tag appointment, `GET /api/v1/appointments/{appointmentId}`.
+  2. Click **Try it out**.
+  3. Type into `appointmentId`: the ID_BK01 you wrote down in SW-5.
+  4. Click **Execute**.
+- **Expect:** HTTP 200; `id` equals ID_BK01; the other fields equal the SW-5 response.
+- **Record:** write PASS or FAIL and the status you saw.
+
+### SW-8  Cancel the appointment  (cases: CN-01)
+- **Before you start:** SW-5 gave you ID_BK01 and it is still CONFIRMED.
+- **Steps:**
+  1. Open the operation: tag appointment, `POST /api/v1/appointments/{appointmentId}/cancel`.
+  2. Click **Try it out**.
+  3. Type into `appointmentId`: the ID_BK01 you wrote down in SW-5.
+  4. Type into `Idempotency-Key`: `case-cn-01-cancel`
+  5. Click **Execute**.
+- **Expect:** HTTP 200;
+  - `id` equals ID_BK01
+  - `status` = `CANCELLED`
+  - `cancelledAt` is not `null`
+- **Record:** write PASS or FAIL and the status you saw.
+
+### SW-9  End-to-end flow  (cases: DH-09)
+- **Before you start:** run the RESET in §0.1 first (keys `case-dh-09` and `case-dh-09-cancel` are used once per RESET).
+- **Steps:**
+  1. Availability: open tag availability, `GET /api/v1/dealerships/{dealershipId}/availability`, click **Try it out**, type into `dealershipId`: `00000000-0000-0000-0001-000000000001`, into `date`: `DATE`, into `serviceType`: `OIL_CHANGE`, click **Execute**. Expect 200. Find the slot `startTime` = `DATET11:30:00Z` and write down its `availableCapacity` (it must be 1 or more); call this CAP_BEFORE.
+  2. Book: open `POST /api/v1/appointments`, click **Try it out**, type into `Idempotency-Key`: `case-dh-09`, type into the request body:
+     `{"dealershipId":"00000000-0000-0000-0001-000000000001","vehicleId":"00000000-0000-0000-0005-000000000023","serviceTypeCode":"OIL_CHANGE","desiredStartTime":"DATET11:30:00Z"}`
+     click **Execute**. Expect 201 and `status` = `CONFIRMED`. Write down the returned `id`.
+  3. Read: open `GET /api/v1/appointments/{appointmentId}`, click **Try it out**, type into `appointmentId`: the `id` from step 2, click **Execute**. Expect 200 and the same fields as step 2.
+  4. Cancel: open `POST /api/v1/appointments/{appointmentId}/cancel`, click **Try it out**, type into `appointmentId`: the `id` from step 2, type into `Idempotency-Key`: `case-dh-09-cancel`, click **Execute**. Expect 200 and `status` = `CANCELLED`.
+  5. Availability again: repeat step 1. Expect 200 and the `DATET11:30:00Z` slot has `availableCapacity` = CAP_BEFORE.
+- **Expect:** HTTP 200, 201, 200, 200, 200 in the order above, with the values written in each step.
+- **Record:** write PASS or FAIL and the status you saw for each of the five steps.
+
+### SW-10  Documentation check, only 200 is documented  (cases: M3, DH-02)
+- **Before you start:** the Swagger page is open.
+- **Steps:**
+  1. Open the operation: tag appointment, `POST /api/v1/appointments`, and look at its **Responses** list. (Or open `http://localhost:8080/v3/api-docs` in the browser and find `/api/v1/appointments` then `post` then `responses`.)
+- **Expect:** the list shows only a `200` response (mismatch M3, documented in §11); the real success status of this operation is 201 and errors are not listed.
+- **Record:** write what you see. This is a documentation check, not a pass or fail on the API.
