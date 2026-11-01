@@ -802,7 +802,7 @@ DATE=$(date -v+7d +%F 2>/dev/null || date -d '+7 days' +%F); echo "DATE=$DATE"
    Expect 200 `{"groups":["liveness","readiness"],"status":"UP"}`. Live: RAN, pass.
 4. **DH-04 Liveness and readiness**
    ```sh
-   curl -s -o /dev/null -w '%{http_code}\n' $BASE/actuator/health/liveness $BASE/actuator/health/readiness
+   for u in liveness readiness; do curl -s -o /dev/null -w '%{http_code}\n' $BASE/actuator/health/$u; done
    ```
    Expect `200` twice. Live: RAN, pass.
 5. **DH-05 Info**
