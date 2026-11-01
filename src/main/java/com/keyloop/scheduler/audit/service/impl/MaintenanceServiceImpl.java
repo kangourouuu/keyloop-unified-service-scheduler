@@ -8,6 +8,7 @@ import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.Period;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -26,7 +27,7 @@ class MaintenanceServiceImpl implements MaintenanceService, SmartLifecycle {
 
   private static final String PARTITION_PREFIX = "request_audit_p";
   private static final int PARTITIONS_AHEAD_DAYS = 7;
-  private static final int RETENTION_DAYS = 14;
+  private static final Period RETENTION = Period.ofMonths(6);
   private static final String LIST_PARTITIONS_SQL =
       """
       SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
@@ -50,7 +51,7 @@ class MaintenanceServiceImpl implements MaintenanceService, SmartLifecycle {
       LocalDate day = today.plusDays(ahead);
       runStep("create partition " + day, () -> createPartition(day));
     }
-    LocalDate retentionStart = today.minusDays(RETENTION_DAYS);
+    LocalDate retentionStart = today.minus(RETENTION);
     runStep("drop partitions", () -> dropPartitionsBefore(retentionStart));
     runStep(
         "delete default rows",

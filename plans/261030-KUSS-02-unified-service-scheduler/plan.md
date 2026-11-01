@@ -55,6 +55,7 @@ Order is strict (each phase builds on the previous). Exit gate per phase: `./mvn
 - Breaking change, `active` → `isActive`. Agent selection: `ServiceBayDto` and `TechnicianDto` expose `active`. Developer decision (after review, 2026-10-31): the field is renamed `isActive` (Java, repositories and JSON; the column stays `active`) — overrides. **Breaking API change:** `GET /api/v1/dealerships/{id}` now returns `isActive` instead of `active` on `bays` and `technicians`; clients reading `active` must change, and `CatalogApiIT` asserts the new name. Reason: boolean fields start with `is` (java-conventions); the developer chose the rename over keeping the wire name.
 - Cancel locking. Agent selection: cancel locks the row with SELECT ... FOR UPDATE / PESSIMISTIC_WRITE (A-023 #2). Developer decision (after review, 2026-10-31): no explicit locks anywhere; cancel is one atomic conditional UPDATE ... WHERE status = CONFIRMED AND start_time > now — overrides. Reason: the developer's original rule, "do not lock table, use atomic conditional update".
 - Data access. Agent selection: booking and audit inserts go through `AppointmentWriteRepository` / `RequestAuditWriteRepository`, raw `EntityManager.persist`. Developer decision (after review, 2026-10-31): Spring Data JPA only — both inserts use `saveAndFlush` on the entity's repository, the entities implement `Persistable` (as `IdempotencyKeyEntity` does) so the insert stays a single INSERT; the write repositories are deleted. Only `MaintenanceServiceImpl` keeps `EntityManager` native queries for the dynamic partition DDL — overrides. Reason: no native entity manager for entity writes.
+- Audit retention. Agent selection: `request_audit` partitions kept for a rolling 14 days. Developer decision (after review, 2026-11-01): retention is six months (`Period.ofMonths(6)` in `MaintenanceServiceImpl`; partitions older than the cutoff are dropped and old default-partition rows deleted) — overrides the 14-day window. No migration: retention logic is not in SQL. Reason: audit data is kept for six months, not deleted early.
 
 ### Cut list (if over budget, cut in this order)
 1. Second compose smoke run with prod logs (phase 07 step 5) → keep the curl checks only.
@@ -65,7 +66,7 @@ Never cut: any Test map row, `BookingConcurrencyIT`, the vehicle precheck, idemp
 ## Fixed decisions (draft §12, not re-litigated)
 - Approach A: partial `EXCLUDE USING gist` on bay/tech/vehicle; re-query + retry until no free pair; random free bay; tech with fewest confirmed minutes that day.
 - `Idempotency-Key` required on book AND cancel; `idempotency_key` row in the same tx; 24h cleanup; replay / 422 mismatch / 409 in-flight.
-- `request_audit`: async, `REQUIRES_NEW`, daily partitions, BRIN, 14-day retention, all `/api/**` incl. reads.
+- `request_audit`: async, `REQUIRES_NEW`, daily partitions, BRIN, six-month retention (2026-11-01 decision), all `/api/**` incl. reads.
 - One `SchedulerGlobalHandler`: RFC 9457 `ProblemDetail` + `code` (KUSS_*) + `requestId`; code mirrored to `request_audit.error_code`.
 - Minimal POST body `{dealershipId, vehicleId, serviceTypeCode, desiredStartTime}`; customer derived from vehicle.
 - Extra read endpoints + cancel; no auth; request signing roadmap only; no Redis/RabbitMQ/WebSocket in code or compose.

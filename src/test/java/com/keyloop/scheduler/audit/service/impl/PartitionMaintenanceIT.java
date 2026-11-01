@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -61,31 +62,41 @@ class PartitionMaintenanceIT extends IntegrationTestSupport {
     assertThat(countDefaultRows(startOf(today), startOf(today.plusDays(1)))).isZero();
   }
 
+  @AfterEach
+  void dropRetentionBoundaryFixtures() {
+    LocalDate cutoff = retentionCutoff();
+    jdbcClient.sql("DROP TABLE IF EXISTS " + partitionName(cutoff.minusDays(1))).update();
+    jdbcClient.sql("DROP TABLE IF EXISTS " + partitionName(cutoff)).update();
+    jdbcClient
+        .sql("DELETE FROM request_audit_default WHERE occurred_at >= :from AND occurred_at < :to")
+        .param("from", Timestamp.from(startOf(cutoff.minusDays(1))))
+        .param("to", Timestamp.from(startOf(cutoff.plusDays(1))))
+        .update();
+  }
+
   @Test
-  void should_drop_partitions_older_than_fourteen_days_and_keep_newer() {
-    LocalDate today = LocalDate.now(clock);
-    createPartition(today.minusDays(20));
-    createPartition(today.minusDays(14));
+  void should_drop_partitions_older_than_six_months_and_keep_newer() {
+    LocalDate cutoff = retentionCutoff();
+    createPartition(cutoff.minusDays(1));
+    createPartition(cutoff);
 
     maintenanceService.runDaily();
 
     assertThat(partitionNames())
-        .doesNotContain(partitionName(today.minusDays(20)))
-        .contains(partitionName(today.minusDays(14)));
+        .doesNotContain(partitionName(cutoff.minusDays(1)))
+        .contains(partitionName(cutoff));
   }
 
   @Test
-  void should_delete_default_rows_older_than_fourteen_days_and_keep_newer() {
-    LocalDate today = LocalDate.now(clock);
-    insertAudit(startOf(today.minusDays(30)));
-    insertAudit(startOf(today.minusDays(10)));
+  void should_delete_default_rows_older_than_six_months_and_keep_newer() {
+    LocalDate cutoff = retentionCutoff();
+    insertAudit(startOf(cutoff.minusDays(1)));
+    insertAudit(startOf(cutoff));
 
     maintenanceService.runDaily();
 
-    assertThat(countDefaultRows(startOf(today.minusDays(30)), startOf(today.minusDays(29))))
-        .isZero();
-    assertThat(countDefaultRows(startOf(today.minusDays(10)), startOf(today.minusDays(9))))
-        .isEqualTo(1);
+    assertThat(countDefaultRows(startOf(cutoff.minusDays(1)), startOf(cutoff))).isZero();
+    assertThat(countDefaultRows(startOf(cutoff), startOf(cutoff.plusDays(1)))).isEqualTo(1);
   }
 
   @Test
@@ -112,6 +123,10 @@ class PartitionMaintenanceIT extends IntegrationTestSupport {
     maintenanceService.runDaily();
 
     assertThat(partitionNames()).isEqualTo(firstRun);
+  }
+
+  private LocalDate retentionCutoff() {
+    return LocalDate.now(clock).minusMonths(6);
   }
 
   private Set<String> partitionNames() {

@@ -307,7 +307,7 @@ Every table change (create, alter, drop, index, constraint, seed data) is a vers
 - Hibernate never touches the schema: `spring.jpa.hibernate.ddl-auto=validate` and `spring.jpa.generate-ddl=false`. Startup fails if an `*Entity` and its table drift apart.
 - A committed migration is never edited. To change something, add the next `V<version + 1>__<description>.sql`.
 - `spring.flyway.clean-disabled=true`, so nothing can wipe the database.
-- Only exception: the audit maintenance job creates tomorrow's `request_audit` day partitions and drops ones older than 14 days at runtime. It never changes columns, indexes or constraints, because partitions inherit those from the parent table that Flyway created.
+- Only exception: the audit maintenance job creates tomorrow's `request_audit` day partitions and drops ones older than six months at runtime. It never changes columns, indexes or constraints, because partitions inherit those from the parent table that Flyway created.
 
 ## 5. Formatting: Spotless
 
@@ -343,4 +343,5 @@ Each rule above that changed after the first version of this file keeps the agen
 - **Boolean `isActive` is a breaking API change (§2).** Agent selection: persisted booleans named `active`. **Developer decision (after review, 2026-10-31):** the Java field, the repository methods and the JSON property become `isActive` (the column stays `active`) — **overrides**. This **breaks the API contract**: `GET /api/v1/dealerships/{id}` returns `isActive` instead of `active` on bays and technicians, and clients that read `active` must change. **Reason:** boolean fields start with `is`/`has`/`can`/`should`.
 - **Formatting (§5).** Agent selection: none (Checkstyle `MethodLength` only). **Developer decision (after review, 2026-10-31):** Spotless with google-java-format, imports, sortPom, SQL, YAML, Markdown; `check` fails `./mvnw verify` — adds. **Reason:** one format, enforced by the build.
 - **Java style (§5).** Agent selection: AOSP style (4-space), chosen by the KUSS-04 implementer to match the doc examples. **Developer decision (after review, 2026-10-31):** default Google style, 2-space, with the examples converted — overrides. **Reason:** keep the formatter's standard style; docs follow the code.
+- **Audit retention (§4).** Agent selection: 14-day rolling window. **Developer decision (after review, 2026-11-01):** six months (`Period.ofMonths(6)`), replacing 14 days — **overrides** the 14-day rolling window. Rows are still deleted after six months: partitions older than the cutoff are dropped and old default-partition rows deleted. **Reason:** audit data is kept for six months, not deleted early.
 
