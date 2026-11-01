@@ -4,13 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.keyloop.scheduler.SeedIds;
 import com.keyloop.scheduler.common.constants.ApiPathConstants;
+import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
+import com.keyloop.scheduler.common.constants.HeaderConstants;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import tools.jackson.databind.JsonNode;
 
 class AppointmentValidationApiIT extends AppointmentApiSupport {
 
@@ -105,5 +109,45 @@ class AppointmentValidationApiIT extends AppointmentApiSupport {
     assertThat(booking.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(code(booking)).isEqualTo("KUSS_IDEMPOTENCY_KEY_MISSING");
     assertThat(code(cancel)).isEqualTo("KUSS_IDEMPOTENCY_KEY_MISSING");
+  }
+
+  @Test
+  void should_return_idempotency_key_missing_detail_even_when_body_is_invalid() {
+    ResponseEntity<String> booking =
+        http.post()
+            .uri(ApiPathConstants.APPOINTMENTS)
+            .contentType(MediaType.APPLICATION_JSON)
+            .body("{}")
+            .retrieve()
+            .toEntity(String.class);
+    ResponseEntity<String> cancel =
+        http.post()
+            .uri(ApiPathConstants.APPOINTMENTS + "/" + UUID.randomUUID() + ApiPathConstants.CANCEL)
+            .retrieve()
+            .toEntity(String.class);
+
+    assertThat(booking.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(cancel.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(code(booking)).isEqualTo("KUSS_IDEMPOTENCY_KEY_MISSING");
+    assertThat(code(cancel)).isEqualTo("KUSS_IDEMPOTENCY_KEY_MISSING");
+    assertThat(detail(booking)).isEqualTo(ErrorMessageConstants.IDEMPOTENCY_KEY_MISSING);
+    assertThat(detail(cancel)).isEqualTo(ErrorMessageConstants.IDEMPOTENCY_KEY_MISSING);
+  }
+
+  @Test
+  void should_document_idempotency_key_header_as_optional_in_openapi() {
+    ResponseEntity<String> docs = http.get().uri("/v3/api-docs").retrieve().toEntity(String.class);
+
+    JsonNode paths = jsonMapper.readTree(docs.getBody()).get("paths");
+    for (String path :
+        List.of(
+            ApiPathConstants.APPOINTMENTS,
+            ApiPathConstants.APPOINTMENTS + "/{appointmentId}" + ApiPathConstants.CANCEL)) {
+      for (JsonNode parameter : paths.get(path).get("post").get("parameters")) {
+        if (HeaderConstants.IDEMPOTENCY_KEY.equals(parameter.get("name").asString())) {
+          assertThat(parameter.path("required").asBoolean()).isFalse();
+        }
+      }
+    }
   }
 }
