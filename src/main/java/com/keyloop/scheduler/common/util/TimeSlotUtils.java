@@ -10,15 +10,16 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.stream.Stream;
+import lombok.AccessLevel;
 import lombok.Builder;
+import lombok.NoArgsConstructor;
 
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class TimeSlotUtils {
 
   private static final Duration GRID_STEP = Duration.ofMinutes(30);
   private static final int MAX_DAYS_AHEAD = 90;
   private static final int MAX_DAYS_BACK = 365;
-
-  private TimeSlotUtils() {}
 
   /**
    * Lists every half-hour start inside the dealership's opening hours on the given local date that

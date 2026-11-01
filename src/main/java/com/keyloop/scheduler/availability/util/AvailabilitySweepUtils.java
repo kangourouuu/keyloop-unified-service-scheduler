@@ -9,10 +9,11 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class AvailabilitySweepUtils {
-
-  private AvailabilitySweepUtils() {}
 
   /**
    * Computes the capacity of every candidate start: the smaller of the free bays and the free

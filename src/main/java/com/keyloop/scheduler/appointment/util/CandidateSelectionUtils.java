@@ -9,10 +9,11 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.random.RandomGenerator;
 import java.util.stream.Collectors;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class CandidateSelectionUtils {
-
-  private CandidateSelectionUtils() {}
 
   /**
    * Returns the confirmed minutes each free technician already has on the day, zero when none, as

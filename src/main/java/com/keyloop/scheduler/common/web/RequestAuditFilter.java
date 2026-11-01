@@ -3,7 +3,6 @@ package com.keyloop.scheduler.common.web;
 import com.keyloop.scheduler.audit.dto.RequestAuditDto;
 import com.keyloop.scheduler.audit.service.RequestAuditService;
 import com.keyloop.scheduler.common.constants.ApiPathConstants;
-import com.keyloop.scheduler.common.constants.BeanNameConstants;
 import com.keyloop.scheduler.common.constants.HeaderConstants;
 import com.keyloop.scheduler.common.constants.RequestConstants;
 import jakarta.servlet.FilterChain;
@@ -18,8 +17,8 @@ import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.MDC;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
@@ -32,6 +31,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 @Component
+@RequiredArgsConstructor
 @Order(Ordered.HIGHEST_PRECEDENCE)
 class RequestAuditFilter extends OncePerRequestFilter {
 
@@ -48,17 +48,6 @@ class RequestAuditFilter extends OncePerRequestFilter {
   private final RequestAuditService requestAuditService;
   private final Executor auditExecutor;
   private final ObjectMapper objectMapper;
-
-  RequestAuditFilter(
-      Clock clock,
-      RequestAuditService requestAuditService,
-      @Qualifier(BeanNameConstants.AUDIT_EXECUTOR) Executor auditExecutor,
-      ObjectMapper objectMapper) {
-    this.clock = clock;
-    this.requestAuditService = requestAuditService;
-    this.auditExecutor = auditExecutor;
-    this.objectMapper = objectMapper;
-  }
 
   /**
    * Assigns the request id, echoes it in the response header and, unless the path is exempt, hands

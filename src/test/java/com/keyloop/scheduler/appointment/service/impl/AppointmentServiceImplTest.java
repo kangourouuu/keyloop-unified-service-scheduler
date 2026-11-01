@@ -59,7 +59,8 @@ class AppointmentServiceImplTest {
 
   private AppointmentServiceImpl service(Clock clock) {
     CatalogService catalogService = mock(CatalogService.class);
-    BookingMetrics bookingMetrics = new BookingMetrics(catalogService, new SimpleMeterRegistry());
+    BookingMetricsHelper bookingMetricsHelper =
+        new BookingMetricsHelper(catalogService, new SimpleMeterRegistry());
     return new AppointmentServiceImpl(
         clock,
         catalogService,
@@ -67,9 +68,9 @@ class AppointmentServiceImplTest {
         mock(AppointmentMapper.class),
         mock(IdempotencyService.class),
         transactionManager,
-        mock(BookingAttempt.class),
-        new BookingConflictHandler(bookingMetrics),
-        bookingMetrics);
+        mock(BookingAttemptHelper.class),
+        new BookingConflictHelper(bookingMetricsHelper),
+        bookingMetricsHelper);
   }
 
   private static BookAppointmentDto request() {

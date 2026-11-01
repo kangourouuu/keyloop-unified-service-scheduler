@@ -15,14 +15,14 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-class BookingConflictHandler {
+class BookingConflictHelper {
 
   private static final String VEHICLE_OVERLAP_CONSTRAINT = "excl_appointment_vehicle_overlap";
   private static final String BAY_OVERLAP_CONSTRAINT = "excl_appointment_bay_overlap";
   private static final String DEADLOCK_STATE = "40P01";
   private static final Set<String> RETRYABLE_STATES = Set.of("23P01", DEADLOCK_STATE);
 
-  private final BookingMetrics bookingMetrics;
+  private final BookingMetricsHelper bookingMetricsHelper;
 
   /**
    * Classifies a failed booking attempt. A vehicle overlap fails the request, a statement timeout
@@ -43,7 +43,7 @@ class BookingConflictHandler {
     if (!RETRYABLE_STATES.contains(state)) {
       throw ex;
     }
-    bookingMetrics.countRetry(conflictType(constraint, state));
+    bookingMetricsHelper.countRetry(conflictType(constraint, state));
     if (DEADLOCK_STATE.equals(state) && hasNextAttempt) {
       backOffAfterDeadlock(deadline);
     }

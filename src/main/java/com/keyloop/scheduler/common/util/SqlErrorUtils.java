@@ -1,10 +1,11 @@
 package com.keyloop.scheduler.common.util;
 
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 import org.postgresql.util.PSQLException;
 
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class SqlErrorUtils {
-
-  private SqlErrorUtils() {}
 
   public static String sqlState(Throwable error) {
     PSQLException psql = findPsqlException(error);

@@ -1,5 +1,9 @@
 package com.keyloop.scheduler.common.constants;
 
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
+
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class MetricConstants {
 
   public static final String BOOKING_REQUESTS = "scheduler.booking.requests";
@@ -18,6 +22,4 @@ public final class MetricConstants {
   public static final String CONFLICT_DEADLOCK = "deadlock";
   public static final String STATUS_SUCCESS = "success";
   public static final String STATUS_FAILURE = "failure";
-
-  private MetricConstants() {}
 }

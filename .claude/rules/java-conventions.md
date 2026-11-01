@@ -15,8 +15,9 @@ Full rules with examples: `docs/code-standards.md`. These project conventions ov
 - `*Dto` — Java `record` with Lombok `@Builder`, never a class; no mapping code inside
 - `*Mapper` — MapStruct `@Mapper(componentModel = "spring")` interface; owns every Entity ↔ Dto mapping (`toDto`, `toEntity`)
 - `*GlobalHandler` — the single `@RestControllerAdvice` exception handler
-- `*Utils` — static helpers only (final class, private constructor)
-- `*Constants` — in `com.keyloop.scheduler.common.constants` (final class, private constructor): every error/detail message (`ErrorMessageConstants`) and every name used by 2+ classes (`HeaderConstants`, `RequestConstants`, `MetricConstants`). One-class literals stay `private static final` in that class; SQL stays in its repository
+- `*Helper` — Spring `@Component` with collaborators, no business API, not a service interface (lives next to the `*ServiceImpl` that uses it)
+- `*Utils` — static helpers only (final class, `@NoArgsConstructor(access = AccessLevel.PRIVATE)`, never a bare `@NoArgsConstructor`)
+- `*Constants` — in `com.keyloop.scheduler.common.constants` (final class, `@NoArgsConstructor(access = AccessLevel.PRIVATE)`): every error/detail message (`ErrorMessageConstants`) and every name used by 2+ classes (`HeaderConstants`, `RequestConstants`, `MetricConstants`). One-class literals stay `private static final` in that class; SQL stays in its repository
 - `*Test` — unit test (Surefire); `*IT` — integration test with Testcontainers (Failsafe)
 - Test methods: snake_case with prefix `should_` (`should_return_409_when_vehicle_already_booked`)
 

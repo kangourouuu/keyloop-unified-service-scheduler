@@ -17,7 +17,7 @@ import java.util.stream.Stream;
 import org.springframework.stereotype.Component;
 
 @Component
-class BookingMetrics {
+class BookingMetricsHelper {
 
   private static final Set<String> BOOKING_RESULTS =
       Set.of(
@@ -41,7 +41,7 @@ class BookingMetrics {
   private final MeterRegistry meterRegistry;
   private final Map<String, Counter> retryCounters;
 
-  BookingMetrics(CatalogService catalogService, MeterRegistry meterRegistry) {
+  BookingMetricsHelper(CatalogService catalogService, MeterRegistry meterRegistry) {
     this.catalogService = catalogService;
     this.meterRegistry = meterRegistry;
     this.retryCounters =

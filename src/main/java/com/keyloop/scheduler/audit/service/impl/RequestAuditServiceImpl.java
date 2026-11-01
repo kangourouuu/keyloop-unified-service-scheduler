@@ -11,6 +11,8 @@ import com.keyloop.scheduler.audit.repository.RequestAuditRepository;
 import com.keyloop.scheduler.audit.service.RequestAuditService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -19,21 +21,19 @@ import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 class RequestAuditServiceImpl implements RequestAuditService {
 
   private final RequestAuditRepository requestAuditRepository;
   private final RequestAuditMapper requestAuditMapper;
-  private final Counter successes;
-  private final Counter failures;
+  private final MeterRegistry meterRegistry;
+  private Counter successes;
+  private Counter failures;
 
-  RequestAuditServiceImpl(
-      RequestAuditRepository requestAuditRepository,
-      RequestAuditMapper requestAuditMapper,
-      MeterRegistry meterRegistry) {
-    this.requestAuditRepository = requestAuditRepository;
-    this.requestAuditMapper = requestAuditMapper;
-    this.successes = meterRegistry.counter(AUDIT_WRITES, TAG_STATUS, STATUS_SUCCESS);
-    this.failures = meterRegistry.counter(AUDIT_WRITES, TAG_STATUS, STATUS_FAILURE);
+  @PostConstruct
+  void registerCounters() {
+    successes = meterRegistry.counter(AUDIT_WRITES, TAG_STATUS, STATUS_SUCCESS);
+    failures = meterRegistry.counter(AUDIT_WRITES, TAG_STATUS, STATUS_FAILURE);
   }
 
   @Override

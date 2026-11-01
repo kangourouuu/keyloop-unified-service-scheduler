@@ -3,12 +3,13 @@ package com.keyloop.scheduler.appointment.util;
 import com.keyloop.scheduler.common.constants.ErrorMessageConstants;
 import com.keyloop.scheduler.common.error.ErrorCode;
 import com.keyloop.scheduler.common.error.SchedulerException;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class BookingErrorUtils {
-
-  private BookingErrorUtils() {}
 
   public static SchedulerException bookingNotCompleted() {
     return new SchedulerException(

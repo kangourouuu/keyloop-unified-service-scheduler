@@ -1,5 +1,9 @@
 package com.keyloop.scheduler.common.constants;
 
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
+
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ApiPathConstants {
 
   public static final String API_BASE = "/api/v1";
@@ -8,6 +12,4 @@ public final class ApiPathConstants {
   public static final String DEALERSHIPS = API_BASE + "/dealerships";
   public static final String SERVICE_TYPES = API_BASE + "/service-types";
   public static final String CUSTOMERS = API_BASE + "/customers";
-
-  private ApiPathConstants() {}
 }

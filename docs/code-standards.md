@@ -6,20 +6,21 @@ These conventions override ponytail's "no interface with a single implementation
 
 ## 1. Naming: class suffix → role
 
-|      Suffix      |                      Role                       |
-|------------------|-------------------------------------------------|
-| `*Controller`    | Request entry point (REST controller)           |
-| `*Service`       | Service interface                               |
-| `*ServiceImpl`   | Implementation of that interface                |
-| `*Repository`    | Spring Data JPA repository                      |
-| `*Entity`        | JPA entity, lower snake_case table name         |
-| `*Dto`           | Java `record` with `@Builder`, no mapping code  |
-| `*Mapper`        | MapStruct interface, owns Entity ↔ Dto mapping  |
-| `*GlobalHandler` | The single global exception handler             |
-| `*Utils`         | Static helpers                                  |
-| `*Constants`     | Shared constants in `common.constants`          |
-| `*Test`          | Unit test (Surefire)                            |
-| `*IT`            | Integration test with Testcontainers (Failsafe) |
+|      Suffix      |                                       Role                                       |
+|------------------|----------------------------------------------------------------------------------|
+| `*Controller`    | Request entry point (REST controller)                                            |
+| `*Service`       | Service interface                                                                |
+| `*ServiceImpl`   | Implementation of that interface                                                 |
+| `*Repository`    | Spring Data JPA repository                                                       |
+| `*Entity`        | JPA entity, lower snake_case table name                                          |
+| `*Dto`           | Java `record` with `@Builder`, no mapping code                                   |
+| `*Mapper`        | MapStruct interface, owns Entity ↔ Dto mapping                                   |
+| `*GlobalHandler` | The single global exception handler                                              |
+| `*Helper`        | Spring `@Component` with collaborators, no business API, not a service interface |
+| `*Utils`         | Static helpers                                                                   |
+| `*Constants`     | Shared constants in `common.constants`                                           |
+| `*Test`          | Unit test (Surefire)                                                             |
+| `*IT`            | Integration test with Testcontainers (Failsafe)                                  |
 
 ### Controller: request entry point
 
@@ -104,8 +105,8 @@ All errors leave as RFC 9457 `ProblemDetail` with `code` (`KUSS_*`) and `request
 ### Utils: static helpers
 
 ```java
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 final class TimeSlotUtils {
-  private TimeSlotUtils() {}
   static boolean isOnHalfHourGrid(LocalTime time) { ... }
 }
 ```
@@ -113,11 +114,10 @@ final class TimeSlotUtils {
 ### Constants: messages and shared names in `common.constants`
 
 ```java
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ErrorMessageConstants {
   public static final String BOOKING_NOT_COMPLETED = "Booking could not be completed.";
   public static final String APPOINTMENT_NOT_FOUND = "Appointment not found.";
-
-  private ErrorMessageConstants() {}
 }
 ```
 
@@ -134,7 +134,7 @@ Each domain (`appointment`, `availability`, `catalog`, `audit`) is one package w
 com.keyloop.scheduler.appointment
 ├── controller   AppointmentController
 ├── service      AppointmentService (interface)
-│   └── impl     AppointmentServiceImpl
+│   └── impl     AppointmentServiceImpl, BookingAttemptHelper
 ├── repository   AppointmentRepository, AppointmentWriteRepository
 ├── entity       AppointmentEntity, AppointmentStatus
 ├── dto          AppointmentDto, BookAppointmentDto, ...

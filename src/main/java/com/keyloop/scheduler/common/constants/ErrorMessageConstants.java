@@ -1,5 +1,9 @@
 package com.keyloop.scheduler.common.constants;
 
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
+
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ErrorMessageConstants {
 
   public static final String MALFORMED_REQUEST = "Malformed request.";
@@ -32,6 +36,4 @@ public final class ErrorMessageConstants {
 
   public static final String APPOINTMENT_NOT_FOUND = "Appointment not found.";
   public static final String APPOINTMENT_ALREADY_STARTED = "Appointment has already started.";
-
-  private ErrorMessageConstants() {}
 }

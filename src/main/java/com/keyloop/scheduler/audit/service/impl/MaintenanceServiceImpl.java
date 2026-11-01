@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -20,6 +21,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 class MaintenanceServiceImpl implements MaintenanceService, SmartLifecycle {
 
   private static final String PARTITION_PREFIX = "request_audit_p";
@@ -36,21 +38,8 @@ class MaintenanceServiceImpl implements MaintenanceService, SmartLifecycle {
   private final RequestAuditRepository requestAuditRepository;
   private final IdempotencyKeyRepository idempotencyKeyRepository;
   private final Clock clock;
-  private final TransactionTemplate transactionTemplate;
+  private final PlatformTransactionManager transactionManager;
   private volatile boolean isRunning;
-
-  MaintenanceServiceImpl(
-      EntityManager entityManager,
-      RequestAuditRepository requestAuditRepository,
-      IdempotencyKeyRepository idempotencyKeyRepository,
-      Clock clock,
-      PlatformTransactionManager transactionManager) {
-    this.entityManager = entityManager;
-    this.requestAuditRepository = requestAuditRepository;
-    this.idempotencyKeyRepository = idempotencyKeyRepository;
-    this.clock = clock;
-    this.transactionTemplate = new TransactionTemplate(transactionManager);
-  }
 
   @Override
   @Scheduled(cron = "0 5 0 * * *", zone = "UTC")
@@ -130,7 +119,7 @@ class MaintenanceServiceImpl implements MaintenanceService, SmartLifecycle {
 
   private void runStep(String step, Runnable action) {
     try {
-      transactionTemplate.executeWithoutResult(status -> action.run());
+      new TransactionTemplate(transactionManager).executeWithoutResult(status -> action.run());
     } catch (RuntimeException ex) {
       log.warn("Audit maintenance step failed: {}", step, ex);
     }

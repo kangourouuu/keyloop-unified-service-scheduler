@@ -27,6 +27,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpMethod;
@@ -38,6 +39,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 class AppointmentServiceImpl implements AppointmentService {
 
   private static final int MAX_ATTEMPTS = 100;
@@ -47,32 +49,10 @@ class AppointmentServiceImpl implements AppointmentService {
   private final AppointmentRepository appointmentRepository;
   private final AppointmentMapper appointmentMapper;
   private final IdempotencyService idempotencyService;
-  private final TransactionTemplate transactionTemplate;
-  private final BookingAttempt bookingAttempt;
-  private final BookingConflictHandler conflictHandler;
-  private final BookingMetrics bookingMetrics;
-
-  AppointmentServiceImpl(
-      Clock clock,
-      CatalogService catalogService,
-      AppointmentRepository appointmentRepository,
-      AppointmentMapper appointmentMapper,
-      IdempotencyService idempotencyService,
-      PlatformTransactionManager transactionManager,
-      BookingAttempt bookingAttempt,
-      BookingConflictHandler conflictHandler,
-      BookingMetrics bookingMetrics) {
-    this.clock = clock;
-    this.catalogService = catalogService;
-    this.appointmentRepository = appointmentRepository;
-    this.appointmentMapper = appointmentMapper;
-    this.idempotencyService = idempotencyService;
-    this.transactionTemplate = new TransactionTemplate(transactionManager);
-    this.transactionTemplate.setTimeout(RequestConstants.TRANSACTION_TIMEOUT_SECONDS);
-    this.bookingAttempt = bookingAttempt;
-    this.conflictHandler = conflictHandler;
-    this.bookingMetrics = bookingMetrics;
-  }
+  private final PlatformTransactionManager transactionManager;
+  private final BookingAttemptHelper bookingAttemptHelper;
+  private final BookingConflictHelper conflictHelper;
+  private final BookingMetricsHelper bookingMetricsHelper;
 
   /**
    * Books the first free bay and qualified technician pair for the whole service duration. Each
@@ -94,18 +74,24 @@ class AppointmentServiceImpl implements AppointmentService {
       result = ex.getCode().name();
       throw ex;
     } finally {
-      bookingMetrics.recordBooking(request, result);
+      bookingMetricsHelper.recordBooking(request, result);
     }
+  }
+
+  private TransactionTemplate bookingTransaction() {
+    TransactionTemplate template = new TransactionTemplate(transactionManager);
+    template.setTimeout(RequestConstants.TRANSACTION_TIMEOUT_SECONDS);
+    return template;
   }
 
   private AppointmentResultDto bookWithRetry(BookAppointmentDto request, String idempotencyKey) {
     BookingDeadline deadline = BookingDeadline.startingNow(clock);
     for (int attempt = 1; attempt <= MAX_ATTEMPTS && !deadline.isExpired(); attempt++) {
       try {
-        return transactionTemplate.execute(
-            status -> bookingAttempt.bookOnce(request, idempotencyKey));
+        return bookingTransaction()
+            .execute(status -> bookingAttemptHelper.bookOnce(request, idempotencyKey));
       } catch (DataAccessException ex) {
-        conflictHandler.handle(ex, deadline, attempt < MAX_ATTEMPTS);
+        conflictHelper.handle(ex, deadline, attempt < MAX_ATTEMPTS);
       } catch (CannotCreateTransactionException ex) {
         log.warn("Booking aborted, no database connection: {}", ex.getMessage());
         throw BookingErrorUtils.serviceBusy();

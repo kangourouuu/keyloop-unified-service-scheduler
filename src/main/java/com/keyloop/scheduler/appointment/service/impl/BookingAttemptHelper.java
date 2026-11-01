@@ -38,7 +38,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-class BookingAttempt {
+class BookingAttemptHelper {
 
   private final Clock clock;
   private final CatalogService catalogService;
@@ -91,21 +91,21 @@ class BookingAttempt {
   }
 
   private CandidateDto pickCandidate(BookingContext context) {
-    List<UUID> freeBayIds =
+    List<UUID> freeServiceBayIds =
         appointmentRepository.findFreeBayIds(
             context.dealershipId(), context.start(), context.end());
-    List<UUID> freeTechnicianIds =
+    List<UUID> freeQualifiedTechnicianIds =
         appointmentRepository.findFreeTechnicianIds(
             context.dealershipId(), context.serviceTypeCode(), context.start(), context.end());
-    if (freeBayIds.isEmpty() || freeTechnicianIds.isEmpty()) {
+    if (freeServiceBayIds.isEmpty() || freeQualifiedTechnicianIds.isEmpty()) {
       throw new SchedulerException(ErrorCode.KUSS_NO_CAPACITY, ErrorMessageConstants.NO_CAPACITY);
     }
-    List<AppointmentEntity> dayAppointments =
+    List<AppointmentEntity> confirmedAppointmentDays =
         appointmentRepository.findConfirmedOnDayForTechnicians(
-            freeTechnicianIds, context.day().start(), context.day().end());
+            freeQualifiedTechnicianIds, context.day().start(), context.day().end());
     List<TechnicianLoadDto> loads =
-        CandidateSelectionUtils.loads(freeTechnicianIds, dayAppointments);
-    return CandidateSelectionUtils.pick(freeBayIds, loads, ThreadLocalRandom.current());
+        CandidateSelectionUtils.loads(freeQualifiedTechnicianIds, confirmedAppointmentDays);
+    return CandidateSelectionUtils.pick(freeServiceBayIds, loads, ThreadLocalRandom.current());
   }
 
   private static AppointmentDto newAppointment(
