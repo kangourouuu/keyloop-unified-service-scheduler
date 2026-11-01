@@ -40,14 +40,15 @@ export TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=true   # rootful machine: podman
 ```
 
 - Spotless check and Checkstyle are bound to `validate`, so `./mvnw test` and `./mvnw verify` both fail on unformatted files or methods over 20 lines. Run `spotless:apply` first.
-- **Unit tests** (`*Test`, Surefire) cover time slots and DST, the availability sweep, candidate selection, the deadlock backoff and deadline, the error handler, and the audit filter.
+- **Unit tests** (`*Test`, Surefire) cover time slots and DST, the availability sweep, candidate selection, the deadlock backoff and deadline, the idempotency completion guard, the error handler, and the audit filter.
 - **Integration tests** (`*IT`, Failsafe) start `docker.io/library/postgres:17` with `deadlock_timeout=100ms` through Testcontainers. They cover:
   - schema constraints, including a two-connection race;
   - the booking concurrency gate: 20 parallel requests for K free pairs give exactly K `201`;
   - vehicle overlap and idempotency (replay, `422`, in flight, TTL);
-  - every HTTP status and `KUSS_*` code;
-  - request audit, partition maintenance and metrics.
-- **Last recorded full run:** the KUSS-04 review (2026-10-31) recorded `./mvnw -B verify` BUILD SUCCESS with 35 unit and 72 integration tests. Fixes added since bring the sources to 36 `*Test` and 76 `*IT` methods.
+  - every HTTP status and `KUSS_*` code, including `503 KUSS_SERVICE_BUSY` on booking, cancel and reads (pool exhaustion and statement timeouts);
+  - ProblemDetail bodies from `/error` and from requests Tomcat rejects;
+  - request audit, partition maintenance (six-month retention) and metrics.
+- **Last recorded full run:** the KUSS-04 review (2026-10-31) recorded `./mvnw -B verify` BUILD SUCCESS with 35 unit and 72 integration tests. Fixes added since bring the sources at `638222d` to 38 `*Test` and 91 `*IT` methods (two `*Test` methods are parameterized, so a run reports more tests). No full run at `638222d` is recorded yet.
 
 ## Run
 
@@ -116,25 +117,26 @@ curl -s "$BASE/api/v1/dealerships/$LONDON/appointments?date=$DATE" | jq 'map({id
 curl -s -X POST $BASE/api/v1/appointments/$ID/cancel -H "Idempotency-Key: cancel-$KEY" | jq '{id, status, cancelledAt}'
 ```
 
-- Every response carries `X-Request-Id`, which is also the `requestId` in error bodies and the key of the `request_audit` row.
-- Errors are RFC 9457 `application/problem+json`: `{type, title, status, detail, instance, code, requestId}`.
+- Every response that reaches the app carries `X-Request-Id`, which is also the `requestId` in error bodies and the key of the `request_audit` row.
+- Errors are RFC 9457 `application/problem+json`: `{type, title, status, detail, instance, code, requestId}`. `/error` and requests Tomcat rejects before the app (bad encoding, oversized header) answer the same way, but the Tomcat-level body has no `requestId`.
+- **Breaking change in KUSS-04:** `GET /api/v1/dealerships/{id}` returns `isActive` (was `active`) on each of `bays` and `technicians`.
 
-|                Code                |                              HTTP                              |                                                                                When                                                                                 |
-|------------------------------------|----------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `KUSS_VALIDATION_FAILED`           | 400 (other framework errors such as 405/415 keep their status) | Malformed JSON or a field/parameter constraint, a bad `Idempotency-Key` format (`[A-Za-z0-9_-]{1,128}`), a start that isn't a bookable slot, or a date out of range |
-| `KUSS_IDEMPOTENCY_KEY_MISSING`     | 400                                                            | No `Idempotency-Key` on book or cancel                                                                                                                              |
-| `KUSS_RESOURCE_NOT_FOUND`          | 404                                                            | Unknown dealership, vehicle, service type, appointment or path                                                                                                      |
-| `KUSS_VEHICLE_ALREADY_BOOKED`      | 409                                                            | The vehicle already has an overlapping confirmed appointment                                                                                                        |
-| `KUSS_NO_CAPACITY`                 | 409                                                            | No free bay + qualified technician for the whole duration                                                                                                           |
-| `KUSS_IDEMPOTENCY_IN_FLIGHT`       | 409                                                            | The same key is being processed by another request                                                                                                                  |
-| `KUSS_APPOINTMENT_ALREADY_STARTED` | 409                                                            | Cancel at or after the start time                                                                                                                                   |
-| `KUSS_IDEMPOTENCY_KEY_MISMATCH`    | 422                                                            | Same key, different request                                                                                                                                         |
-| `KUSS_SERVICE_BUSY`                | 503                                                            | A booking found the DB pool exhausted or reached its 10 s deadline. Comes with `Retry-After: 1`, and a same-key retry is safe.                                      |
-| `KUSS_INTERNAL_ERROR`              | 500                                                            | Unexpected error; the stack trace is logged with the `requestId`, never returned                                                                                    |
+|                Code                |                              HTTP                              |                                                                                                    When                                                                                                    |
+|------------------------------------|----------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `KUSS_VALIDATION_FAILED`           | 400 (other framework errors such as 405/415 keep their status) | Malformed JSON or a field/parameter constraint, a bad `Idempotency-Key` format (`[A-Za-z0-9_-]{1,128}`), a start that isn't a bookable slot, or a date out of range. The `detail` names each invalid field |
+| `KUSS_IDEMPOTENCY_KEY_MISSING`     | 400                                                            | No `Idempotency-Key` on book or cancel                                                                                                                                                                     |
+| `KUSS_RESOURCE_NOT_FOUND`          | 404                                                            | Unknown dealership, vehicle, service type, appointment or path                                                                                                                                             |
+| `KUSS_VEHICLE_ALREADY_BOOKED`      | 409                                                            | The vehicle already has an overlapping confirmed appointment                                                                                                                                               |
+| `KUSS_NO_CAPACITY`                 | 409                                                            | No free bay + qualified technician for the whole duration                                                                                                                                                  |
+| `KUSS_IDEMPOTENCY_IN_FLIGHT`       | 409                                                            | The same key is being processed by another request                                                                                                                                                         |
+| `KUSS_APPOINTMENT_ALREADY_STARTED` | 409                                                            | Cancel at or after the start time                                                                                                                                                                          |
+| `KUSS_IDEMPOTENCY_KEY_MISMATCH`    | 422                                                            | Same key, different request                                                                                                                                                                                |
+| `KUSS_SERVICE_BUSY`                | 503                                                            | Any endpoint found no free DB connection or hit a statement timeout, or a booking reached its 10 s deadline. Comes with `Retry-After: 1`, and a same-key retry is safe.                                    |
+| `KUSS_INTERNAL_ERROR`              | 500                                                            | Unexpected error; the stack trace is logged with the `requestId`, never returned                                                                                                                           |
 
 **Date bounds:**
 
-- Availability accepts today to today + 90 days.
+- Availability accepts today to today + 90 days, and `serviceType` must be non-blank and at most 40 characters.
 - The day list accepts today − 365 to today + 90 days.
 - Bookings must be in the future and at most 90 days ahead.
 

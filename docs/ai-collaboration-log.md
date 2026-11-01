@@ -10,7 +10,7 @@ This is a running, dated evidence log. The README's "AI Collaboration Narrative"
 
 - [x] Architecture diagram → §2 (Mermaid flowchart)
 - [x] Role of each component → §3
-- [x] Data flow → §4.1 availability, §4.2 booking (sequence diagram, key claim vs retry loop, deadlocks), §4.3 conflict/409, §4.4 cancel, §4.5 audit
+- [x] Data flow → §4.1 availability, §4.2 booking (sequence diagram, key claim vs retry loop, deadlocks), §4.3 conflict/409/503, §4.4 cancel (atomic conditional update), §4.5 audit (six-month retention)
 - [x] Technologies with justifications → §5
 - [x] Observability strategy (logging, metrics, tracing, request audit) → §6
 - [x] Section on how GenAI assisted the design, including human overrides → §9
@@ -27,7 +27,7 @@ This is a running, dated evidence log. The README's "AI Collaboration Narrative"
 - [x] 1. System Design Document → `docs/system-design.md`
 - [x] 2a. README build/run/test instructions → `README.md` "Prerequisites" (JDK 21, Docker or Podman), "Build and test", "Run", "Quality gates"
 - [x] 2b. README AI Collaboration Narrative, covering strategy, verification and refinement, and final quality → `README.md` "AI Collaboration Narrative"
-- [x] 2c. Test suite for the core business logic → `src/test` (36 `*Test` + 76 `*IT` methods), summarised in `system-design.md` §7 and `README.md` "Build and test"
+- [x] 2c. Test suite for the core business logic → `src/test` (38 `*Test` + 91 `*IT` methods at `638222d`), summarised in `system-design.md` §7 and `README.md` "Build and test"
 - [x] 3. Video (5–10 min) talking points for the five PDF bullets → `docs/video-outline.md` §1–§5
 
 **Evaluation criteria graded on the docs**
@@ -465,5 +465,20 @@ The orchestrator (a Claude Code coordinator session) delegated by complexity. So
   - `app` is published on all interfaces, which matters with no auth.
 
 - **Pattern.** The writer and the checkers were separate. Every finding cited `file:line` and was checked before it was applied. The 37→36 slip was the writer's own and was caught by the checker.
+
+### 2026-11-01: KUSS-06 docs aligned with the KUSS-04 tip (`638222d`)
+
+The design doc, README, video outline and visual explainer were re-checked against the code at `638222d`. Earlier entries stay as written; where they no longer describe the code, this entry and the new rows in `system-design.md` §10 and the explainer's panel I override them.
+
+|                              Earlier statement (entry)                              |                                                                             Current state at `638222d`                                                                             |                                   Source                                   |
+|-------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
+| Cancel with `@Lock(PESSIMISTIC_WRITE)` (2026-10-31 data-access entry)               | One atomic conditional JPQL `UPDATE`, `cancelIfConfirmedAndNotStarted`; no explicit locks anywhere. `404` missing, `200` already cancelled, `409 KUSS_APPOINTMENT_ALREADY_STARTED` | `AppointmentRepository.java:90-100`, `AppointmentServiceImpl.java:132-144` |
+| `503 KUSS_SERVICE_BUSY` covers booking only (2026-10-31 verification entry)         | `503` + `Retry-After: 1` on every endpoint for a pool timeout or a statement timeout                                                                                               | `SchedulerGlobalHandler.java:44-62`, `BookingConflictHelper.java:39-42`    |
+| 14-day audit retention (2026-10-30 decisions)                                       | Six months: older partitions dropped, older default rows deleted; idempotency keys deleted after 24 h                                                                              | `MaintenanceServiceImpl.java:30,54-63`                                     |
+| Pre-service 400s are not in `scheduler_booking_requests_total` (verification entry) | Boundary 400s on `POST /appointments` are counted with `service_type=unknown`                                                                                                      | `SchedulerGlobalHandler.java:139-153`                                      |
+| Bays and technicians expose `active`                                                | JSON property `isActive`, a breaking API change                                                                                                                                    | `ServiceBayDto.java:7`, `TechnicianDto.java:8`                             |
+
+- Also documented: the idempotency completion is one conditional `@Modifying` `UPDATE` (`IdempotencyKeyRepository.java:16-23`); `EntityManager` only in `MaintenanceServiceImpl` (`MaintenanceServiceImpl.java:38`); the `*Helper` components and `final` `*Utils` with private constructors; unique customer email (`CustomerEntity.java:31`, `V1__create_schema.sql:86`); `/error` and Tomcat-level ProblemDetails (`SchedulerErrorController.java`, `ProblemDetailErrorReportValve.java`); `/actuator` index not audited (`RequestAuditFilter.java:38-39`); availability `serviceType` `@NotBlank @Size(max = 40)` (`AvailabilityController.java:29`); `deadlock_timeout=100ms` required in every deployment (`BookingDeadline.java:9-15`).
+- **Test counts** were taken by reading `src/test` at `638222d`, not from a run: 38 `*Test` and 91 `*IT` methods. The HTTP tests are now `AppointmentCancelApiIT`, `AppointmentConflictApiIT`, `AppointmentReadApiIT` and `AppointmentValidationApiIT` (formerly `AppointmentApiIT`), plus `ServiceBusyIT`, `PoolExhaustionIT` and `IdempotencyServiceImplTest`.
 
 <!-- Append new dated entries below: each implemented phase, cross-review findings, test evidence, PR links. -->

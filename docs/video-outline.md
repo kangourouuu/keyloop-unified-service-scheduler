@@ -21,13 +21,14 @@ Talking points, not a script. They follow the five bullets in the PDF. Target le
   2. Vehicle precheck.
   3. Find free pairs, persist + flush, commit, in one transaction per attempt.
   4. Bay/tech `23P01` retries at once.
+- **Cancel:** one atomic conditional `UPDATE … WHERE status = CONFIRMED AND start_time > now`, with no explicit locks anywhere.
 - **The surprise worth 30 seconds:** concurrent exclusion inserts deadlock by design.
   - The first fix (locks) was reverted.
   - The real cause was a livelock: PostgreSQL breaks one cycle per 100 ms, and victims re-knotted it.
-  - The fix: a 1.6–3.2 s randomized backoff inside a 10 s deadline. Overload returns `503 KUSS_SERVICE_BUSY` with `Retry-After`.
+  - The fix: a 1.6–3.2 s randomized backoff inside a 10 s deadline. Overload (no free connection or a statement timeout, on any endpoint) returns `503 KUSS_SERVICE_BUSY` with `Retry-After`. `deadlock_timeout=100ms` is required in every deployment, because the backoff is sized for it.
 - **One error catalog:** `KUSS_*` codes in ProblemDetail, the metrics and `request_audit`, joined by `X-Request-Id`.
-- **Audit:** a bounded executor writes outside the booking transaction into daily partitions, created before the server listens. Flyway owns all schema except those partitions.
-- **Tests:** 36 unit and 76 integration test methods on real PostgreSQL. The release gate is `BookingConcurrencyIT`: 20 parallel requests for K free pairs give exactly K `201`.
+- **Audit:** a bounded executor writes outside the booking transaction into daily partitions, created before the server listens and kept six months. Flyway owns all schema except those partitions.
+- **Tests:** 38 unit and 91 integration test methods on real PostgreSQL. The release gate is `BookingConcurrencyIT`: 20 parallel requests for K free pairs give exactly K `201`.
 - **Honest limits:** no auth, so anyone can read and cancel, and there is no rate limiting. Both are roadmap.
 
 ## 3. AI collaboration story (1–2 min)
