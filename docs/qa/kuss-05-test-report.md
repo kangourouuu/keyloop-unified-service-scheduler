@@ -1,16 +1,16 @@
 # KUSS-05 retest report and bug list
 
-Retest of the implemented Unified Service Scheduler (Scenario A) at `99d0056`, branch `feature/KUSS-05-retest-bug-report`. No production code was changed by this story. The branch is now rebased onto the KUSS-04 tip `0cc274f`, which carries the fixes for BUG-1 to BUG-6; the statuses below were re-checked against that code and a full `./mvnw verify` run. BUG-7 is open (roadmap).
+Retest of the implemented Unified Service Scheduler (Scenario A) at `99d0056`, branch `feature/KUSS-05-retest-bug-report`. No production code was changed by this story. The branch is now rebased onto the KUSS-04 tip `638222d`, which carries the fixes for BUG-1 to BUG-6; the statuses below were re-checked against that code and a full `./mvnw verify` run on 2026-11-01. BUG-7 is open (roadmap).
 
 ## 1. Summary
 
 | Item | Result |
 |---|---|
-| Build | `./mvnw verify` BUILD SUCCESS in 3 of 3 runs on `99d0056` (27 s, 18 s, 27 s); 0 Checkstyle violations; Spotless clean. After the rebase onto `0cc274f`: BUILD SUCCESS in 1 run (1 min 22 s) |
+| Build | `./mvnw verify` BUILD SUCCESS in 3 of 3 runs on `99d0056` (27 s, 18 s, 27 s); 0 Checkstyle violations; Spotless clean. After the rebase onto `638222d`: BUILD SUCCESS in 1 run (1 min 20 s), 0 Checkstyle violations, Spotless clean (an earlier run on `0cc274f` took 1 min 22 s) |
 | Tests at `99d0056` | 45 unit (Surefire) + 76 integration (Failsafe) = 121, 0 failures, 0 errors, 0 skipped, in every run |
 | Tests after this story | 45 unit + 83 integration = 128 (7 new in `BookingEdgeCasesIT`), green in 2 further full runs |
-| Tests after the rebase onto `0cc274f` | 48 unit (Surefire) + 98 integration (Failsafe) = 146, 0 failures, 0 errors, 0 skipped. This includes the 7 `BookingEdgeCasesIT` tests and the tests KUSS-04 added for the BUG-1 to BUG-6 fixes |
-| Flaky tests | None seen in 6 full runs (3 at `99d0056`, 2 with the new tests, 1 after the rebase) and 1 targeted run of the new class. `40P01` deadlock WARN lines appear in the logs (17, 0 and 34 per run); they are retried by design and never failed a test |
+| Tests after the rebase onto `638222d` | 48 unit (Surefire) + 98 integration (Failsafe) = 146, 0 failures, 0 errors, 0 skipped (`target/surefire-reports` and `target/failsafe-reports` cleared before the run; same counts as on `0cc274f`). This includes the 7 `BookingEdgeCasesIT` tests and the tests KUSS-04 added for the BUG-1 to BUG-6 fixes |
+| Flaky tests | None seen in 7 full runs (3 at `99d0056`, 2 with the new tests, 1 after the rebase onto `0cc274f`, 1 on `638222d`) and 1 targeted run of the new class. `40P01` deadlock WARN lines appear in the logs (17, 0 and 34 per run in earlier runs, 19 in the run on `638222d`); they are retried by design and never failed a test |
 | Bugs | **0 Critical, 0 High, 1 Medium, 6 Low** (7 total) when found at `99d0056`. Now: **BUG-1 to BUG-6 fixed** in KUSS-04, **BUG-7 open** (roadmap) |
 | Double-booking | Not reproduced. 7 concurrent bursts (N=24 against K=3, 3, 3, 2, 1 free pairs, plus same-vehicle and same-key bursts) gave exactly K x 201, and a SQL overlap query over all rows returned 0 |
 
@@ -26,16 +26,16 @@ Bugs by severity (status after the KUSS-04 fixes, see section 5 for the evidence
   - BUG-6 (fixed): `GET /actuator` (the index) is written to `request_audit`
   - BUG-7 (open, roadmap): there is no request-body size limit (a 60 MB JSON body was accepted and booked)
 
-Already known findings from `plans/261030-KUSS-02-unified-service-scheduler/reports/review-261031-kuss04-alignment.md` (L-1 completed duplicate gets 409 IN_FLIGHT, L-2 key lives 24-48 h, L-4 backoff base, L-7, L-8, H-1, M-1, M-2, L-3, L-5, L-6) are not re-reported. DD-1, DD-2, F-1, F-2, F-5, F-6 and F-7 are present in the code at `99d0056` and still at `0cc274f` (see O-14).
+Already known findings from `plans/261030-KUSS-02-unified-service-scheduler/reports/review-261031-kuss04-alignment.md` (L-1 completed duplicate gets 409 IN_FLIGHT, L-2 key lives 24-48 h, L-4 backoff base, L-7, L-8, H-1, M-1, M-2, L-3, L-5, L-6) are not re-reported. DD-1, DD-2, F-1, F-2, F-5, F-6 and F-7 are present in the code at `99d0056` and still at `638222d` (see O-14; between `0cc274f` and `638222d` only the audit retention and the `RequestAuditFilter` constructor changed in `src/main`).
 
 ## 2. Environment
 
 | Item | Value |
 |---|---|
-| Code | `99d0056` plus `ef0232a` (tests only) for the black-box retest. Rebased onto KUSS-04 tip `0cc274f` (the fixes for BUG-1 to BUG-6 are in it) for the status re-check |
+| Code | `99d0056` plus `ef0232a` (tests only) for the black-box retest. Rebased onto KUSS-04 tip `638222d` (the fixes for BUG-1 to BUG-6 are in it) for the status re-check |
 | Host | macOS (Darwin 27.2.0), Podman machine (libkrun, 4 CPU, 3.7 GiB) |
 | JDK | OpenJDK 21.0.13 (`/opt/homebrew/opt/openjdk@21`) |
-| Stack | Spring Boot 4.0.9, PostgreSQL 17 (`docker.io/library/postgres:17`, `deadlock_timeout=100ms`), Flyway V1 and V2 |
+| Stack | Spring Boot 4.0.9, PostgreSQL 17 (`docker.io/library/postgres:17`, `deadlock_timeout=100ms`, a required setting for every deployment: `docker-compose.yml:12`, `BookingDeadline.java:11`), Flyway V1 and V2 |
 | Build | `./mvnw -B verify` with `kuss-env.sh` (Testcontainers over the Podman socket) |
 | Black-box | `podman compose up --build -d`, app on `localhost:8080` with the `prod` profile (pool 20, connection timeout 3 s, ECS JSON logs), curl, `xargs -P`, `psql` through `compose exec db`; `podman compose down -v` run afterwards |
 | Date used | 2026-10-31 (container clock UTC). London was on GMT; New York falls back on 2026-11-01, which gave a live DST edge inside the booking horizon |
@@ -143,12 +143,12 @@ Black-box evidence was taken with curl against the running app, and against the 
 
 ## 5. Bug list
 
-Booking correctness and idempotency held under test. The bugs below are in overload handling, error-shape consistency, observability and input limits. Each heading keeps the severity and the description from the retest at `99d0056`; the **Status** line is the state at `0cc274f`. The `Suspected` line of a fixed bug describes the old code.
+Booking correctness and idempotency held under test. The bugs below are in overload handling, error-shape consistency, observability and input limits. Each heading keeps the severity and the description from the retest at `99d0056`; the **Status** line is the state at `638222d`. The `Suspected` line of a fixed bug describes the old code.
 
 ### BUG-1 (Medium): overload outside `POST /appointments` returns 500 instead of 503 `KUSS_SERVICE_BUSY`
 
 - **Status: FIXED** in KUSS-04 commit `1a50b25` (pre-squash `48fa8f8`, on `backup/KUSS-04-pre-squash`).
-- **Code at `0cc274f`:** `SchedulerGlobalHandler.java:53-62` maps `CannotCreateTransactionException` and `QueryTimeoutException` to 503 `KUSS_SERVICE_BUSY` with `Retry-After`. `cancel` has a 5 s timeout at `AppointmentServiceImpl.java:115`, and the reads too (`AppointmentServiceImpl.java:147,160`, `AvailabilityServiceImpl.java:53`, `CatalogServiceImpl.java:46,52,67,75`).
+- **Code at `638222d`:** `SchedulerGlobalHandler.java:53-62` maps `CannotCreateTransactionException` and `QueryTimeoutException` to 503 `KUSS_SERVICE_BUSY` with `Retry-After`. `cancel` has a 5 s timeout at `AppointmentServiceImpl.java:115`, and the reads too (`AppointmentServiceImpl.java:147,160`, `AvailabilityServiceImpl.java:53`, `CatalogServiceImpl.java:46,52,67,75`).
 - **Tests (green in the 2026-11-01 verify):** `PoolExhaustionIT.should_return_503_service_busy_on_cancel_when_no_connection_is_free`, `PoolExhaustionIT.should_return_503_service_busy_on_reads_when_no_connection_is_free`, `ServiceBusyIT.should_return_503_service_busy_when_cancel_waits_on_a_locked_table`, `ServiceBusyIT.should_return_503_service_busy_when_availability_waits_on_a_locked_table`, `ServiceBusyIT.should_return_503_service_busy_when_day_list_waits_on_a_locked_table`.
 
 - **Endpoints:** `POST /api/v1/appointments/{id}/cancel`, all reads (`GET availability`, `GET appointments`, `GET /dealerships`, and so on).
@@ -170,7 +170,7 @@ Booking correctness and idempotency held under test. The bugs below are in overl
 ### BUG-2 (Low): a database lock stall during booking returns 500, and read transactions have no timeout
 
 - **Status: FIXED** in KUSS-04 commit `1a50b25` (pre-squash `48fa8f8`).
-- **Code at `0cc274f`:** a statement timeout during booking is mapped to `serviceBusy()` at `BookingConflictHelper.java:39-42`; the booking transaction has a 5 s timeout (`AppointmentServiceImpl.java:83`) and a missing connection is mapped at `:95-97`. Read transactions now carry the same 5 s timeout (see BUG-1).
+- **Code at `638222d`:** a statement timeout during booking is mapped to `serviceBusy()` at `BookingConflictHelper.java:39-42`; the booking transaction has a 5 s timeout (`AppointmentServiceImpl.java:83`) and a missing connection is mapped at `:95-97`. Read transactions now carry the same 5 s timeout (see BUG-1).
 - **Test:** `ServiceBusyIT.should_return_503_service_busy_when_booking_waits_on_a_locked_table` asserts the 503 and that a retry with the same key then books (201), so the claim was rolled back.
 
 - **Endpoint:** `POST /api/v1/appointments`, and `GET` endpoints.
@@ -183,7 +183,7 @@ Booking correctness and idempotency held under test. The bugs below are in overl
 ### BUG-3 (Low): `400 KUSS_VALIDATION_FAILED` detail for `POST /appointments` names the parameter `request`, not the field, and repeats
 
 - **Status: FIXED** in KUSS-04 commit `1a50b25` (pre-squash `68de448`).
-- **Code at `0cc274f`:** `SchedulerGlobalHandler.handleMethodValidation` (`:86-95`) and `validationMessages` (`:97-105`) report `getFieldErrors()` as `field: message` for body errors, and `.distinct()` removes repeats.
+- **Code at `638222d`:** `SchedulerGlobalHandler.handleMethodValidation` (`:86-95`) and `validationMessages` (`:97-105`) report `getFieldErrors()` as `field: message` for body errors, and `.distinct()` removes repeats.
 - **Test:** `AppointmentValidationApiIT.should_name_each_invalid_field_once_in_the_400_detail` (empty body names the four fields and not `request:`; a 41-char service type starts with `serviceTypeCode: `; a bad key starts with `idempotencyKey: `; no duplicates).
 
 - **Endpoint:** `POST /api/v1/appointments`.
@@ -202,7 +202,7 @@ Booking correctness and idempotency held under test. The bugs below are in overl
 ### BUG-4 (Low): `scheduler.booking.requests` never counts `KUSS_IDEMPOTENCY_KEY_MISSING` or any 400 raised before the service
 
 - **Status: FIXED** in KUSS-04 commit `1a50b25` (pre-squash `1ad00dd`).
-- **Code at `0cc274f`:** `SchedulerGlobalHandler.reject` (`:139-153`) increments `scheduler.booking.requests` for a `POST /api/v1/appointments` with the result tag set to the error code and the service tag `unknown`. The missing-header (`:64-74`), body-validation (`:76-84`), method-validation (`:86-95`) and malformed-body (`:117-121`) handlers all go through it.
+- **Code at `638222d`:** `SchedulerGlobalHandler.reject` (`:139-153`) increments `scheduler.booking.requests` for a `POST /api/v1/appointments` with the result tag set to the error code and the service tag `unknown`. The missing-header (`:64-74`), body-validation (`:76-84`), method-validation (`:86-95`) and malformed-body (`:117-121`) handlers all go through it.
 - **Tests:** `MetricsIT.should_count_missing_idempotency_key_as_unknown_service_type`, `MetricsIT.should_count_boundary_validation_failures_as_unknown_service_type` (3 boundary 400s add 3 to the counter).
 
 - **Endpoint:** `POST /api/v1/appointments`.
@@ -215,7 +215,7 @@ Booking correctness and idempotency held under test. The bugs below are in overl
 ### BUG-5 (Low): `GET /error` and container-level failures return non-ProblemDetail responses
 
 - **Status: FIXED** in KUSS-04 commit `1a50b25` (pre-squash `b876d78`).
-- **Code at `0cc274f`:** `SchedulerErrorController.java:21-39` replaces the default `/error` page and rethrows the original status into `SchedulerGlobalHandler`. `ErrorReportConfiguration.java:20-35` and `ProblemDetailErrorReportValve.java:21` replace Tomcat's HTML error report with a ProblemDetail.
+- **Code at `638222d`:** `SchedulerErrorController.java:21-39` replaces the default `/error` page and rethrows the original status into `SchedulerGlobalHandler`. `ErrorReportConfiguration.java:20-35` and `ProblemDetailErrorReportValve.java:21` replace Tomcat's HTML error report with a ProblemDetail.
 - **Tests:** `ErrorHandlingIT.should_return_404_problem_detail_for_a_direct_error_endpoint_request` (`GET /error` is a 404 `application/problem+json` with `code` and `requestId`), `ErrorHandlingIT.should_return_problem_detail_for_container_level_bad_requests` (`%00` and `%ZZ` give a 400 ProblemDetail, no HTML). The oversized-header case from the repro is not covered by a test.
 
 - **Endpoint:** `GET /error`, requests rejected by Tomcat (header over 8 KB, `%00` or `%ZZ` in the path).
@@ -228,7 +228,7 @@ Booking correctness and idempotency held under test. The bugs below are in overl
 ### BUG-6 (Low): the actuator index `GET /actuator` is audited
 
 - **Status: FIXED** in KUSS-04 commit `1a50b25` (pre-squash `f6235f4`).
-- **Code at `0cc274f`:** `RequestAuditFilter.java:38-39` lists the prefix `"/actuator"` without the trailing slash, and `:91` skips any servlet path that starts with a listed prefix.
+- **Code at `638222d`:** `RequestAuditFilter.java:38-39` lists the prefix `"/actuator"` without the trailing slash, and `:80` skips any servlet path that starts with a listed prefix.
 - **Test:** `RequestAuditIT.should_not_audit_actuator_requests` requests `/actuator` and `/actuator/health` and expects no audit row for either.
 
 - **Endpoint:** `GET /actuator`.
@@ -240,7 +240,7 @@ Booking correctness and idempotency held under test. The bugs below are in overl
 
 ### BUG-7 (Low): no request-body size limit
 
-- **Status: OPEN (roadmap).** Not part of the KUSS-04 fixes. Re-checked at `0cc274f`: `src/main` sets no body-size cap (no Tomcat, Spring or Jackson limit), so the 60 MB body would still be accepted. No test covers it.
+- **Status: OPEN (roadmap).** Not part of the KUSS-04 fixes. Re-checked at `638222d`: `src/main` sets no body-size cap (grep for `maxPostSize`, `max-http`, `max-swallow`, `StreamReadConstraints` and `max-request-size` finds nothing), so the 60 MB body would still be accepted. No test covers it.
 
 - **Endpoint:** `POST /api/v1/appointments` (any JSON endpoint).
 - **Decision:** none violated directly. Developer decision 2026-10-31 (no rate limiting) does not cover body size, and the PDF asks for reliability.
