@@ -904,15 +904,16 @@ html[data-theme="paper"] .am-md table { font-family: var(--font-sans); }
 <li>Claim the key first. The hash is SHA-256 over canonical fields, so reformatted JSON or an equivalent offset replays.</li>
 <li>Run the vehicle <code>EXISTS</code> precheck before capacity. A booked vehicle on a full slot gets <code>KUSS_VEHICLE_ALREADY_BOOKED</code>, not <code>KUSS_NO_CAPACITY</code>.</li>
 <li>Pick a random free bay and the qualified technician with the fewest confirmed minutes that local day.</li>
-<li>Insert with <code>JdbcClient</code>, then store the response in the key row in the same transaction.</li>
+<li>Insert with <code>saveAndFlush</code> on <code>AppointmentRepository</code> (JPA), then store the response in the key row with one conditional <code>UPDATE</code> (<code>IdempotencyKeyRepository.complete</code>) in the same transaction.</li>
 <li>On <code>23P01</code> for bay or technician, or on <code>40P01</code>, roll back and start a new attempt. The fresh snapshot sees the winner, so that resource drops out.</li>
 <li>A failure such as <code>KUSS_NO_CAPACITY</code> rolls back the claim too, so a retry with the same key runs fresh.</li>
 </ol>
 </div>
-<div class="am-callout am-callout--warn" role="note"><div class="am-callout-title">Deadlock root cause (40P01)</div><div class="am-callout-body am-md"><p>PostgreSQL checks an exclusion constraint after it inserts its own index entry. Two concurrent conflicting inserts can each wait on the other transaction. After <code>deadlock_timeout</code> (100 ms) PostgreSQL aborts one with <code>40P01</code>. Unique B-tree indexes avoid this with speculative insertion, but exclusion constraints do not. The retry loop handles it, and tests never assert zero deadlock retries.</p>
+<div class="am-callout am-callout--warn" role="note"><div class="am-callout-title">Deadlock root cause (40P01)</div><div class="am-callout-body am-md"><p>PostgreSQL checks an exclusion constraint after it inserts its own index entry. Two concurrent conflicting inserts can each wait on the other transaction. After <code>deadlock_timeout</code> (100 ms) PostgreSQL aborts one with <code>40P01</code>. Unique B-tree indexes avoid this with speculative insertion, but exclusion constraints do not. The retry loop handles it, and tests never assert zero deadlock retries. <code>deadlock_timeout=100ms</code> is a required setting for every deployment, because the 1.6–3.2 s backoff is sized for it.</p>
 </div></div>
 <div class="am-md"><ul>
-<li><strong>Bounds:</strong> a cap of 100 attempts or no free DB connection (Hikari <code>connection-timeout</code> 3 s in <code>prod</code>) gives 500 <code>KUSS_INTERNAL_ERROR</code>.</li>
+<li><strong>Backoff:</strong> a <code>40P01</code> victim waits a random 1.6–3.2 s outside any transaction (3.2–6.4 s after its next deadlock) before it retries.</li>
+<li><strong>Bounds:</strong> no free DB connection (Hikari <code>connection-timeout</code> 3 s in <code>prod</code>), a statement timeout or the 10 s booking deadline gives 503 <code>KUSS_SERVICE_BUSY</code> with <code>Retry-After: 1</code>. The cap of 100 attempts gives 500 <code>KUSS_INTERNAL_ERROR</code>.</li>
 <li><strong>Metric:</strong> <code>scheduler.booking.gist_retries{conflict_type=bay|technician|deadlock}</code>.</li>
 </ul>
 </div></div>
@@ -933,13 +934,13 @@ html[data-theme="paper"] .am-md table { font-family: var(--font-sans); }
 </section>
 <section class="am-panel" id="panel-F">
 <header class="am-panel-head"><span class="am-panel-id">F</span><h2>Cancel path</h2></header>
-<div class="am-panel-body"><div class="am-md"><p><code>POST /api/v1/appointments/{id}/cancel</code> with <code>Idempotency-Key</code>, in one <code>@Transactional</code> call.</p>
+<div class="am-panel-body"><div class="am-md"><p><code>POST /api/v1/appointments/{id}/cancel</code> with <code>Idempotency-Key</code>, in one <code>@Transactional(timeout = 5)</code> call. No explicit locks anywhere.</p>
 <ol>
 <li>Claim the key: replay, 422 on a different hash, 409 <code>KUSS_IDEMPOTENCY_IN_FLIGHT</code> on a concurrent claim.</li>
-<li>Lock the row with <code>SELECT … FOR UPDATE</code> (<code>JdbcClient</code>). A missing row gives 404 <code>KUSS_RESOURCE_NOT_FOUND</code>.</li>
-<li>Return 200 with the current state when the row is already <code>CANCELLED</code>.</li>
-<li>Return 409 <code>KUSS_APPOINTMENT_ALREADY_STARTED</code> when <code>start_time ≤ now</code>.</li>
-<li>Run <code>UPDATE … SET status = &#39;CANCELLED&#39;, cancelled_at = now WHERE id = :id AND status = &#39;CONFIRMED&#39;</code>.</li>
+<li>Run one atomic conditional JPQL <code>UPDATE … SET status = &#39;CANCELLED&#39;, cancelled_at = now WHERE id = :id AND status = &#39;CONFIRMED&#39; AND start_time &gt; now</code> (<code>cancelIfConfirmedAndNotStarted</code>). No read locks the row first; a second canceller waits for the first to commit and matches nothing.</li>
+<li>Load the appointment. A missing row gives 404 <code>KUSS_RESOURCE_NOT_FOUND</code>.</li>
+<li>Return 409 <code>KUSS_APPOINTMENT_ALREADY_STARTED</code> when the update matched nothing and the row is still <code>CONFIRMED</code> (<code>start_time ≤ now</code>).</li>
+<li>Otherwise (cancelled just now, or already <code>CANCELLED</code>) return 200 with the current state.</li>
 <li>Store the 200 response in the key row and commit.</li>
 </ol>
 <p>The partial constraints release the bay and the technician as soon as the cancel commits.</p>
@@ -947,7 +948,7 @@ html[data-theme="paper"] .am-md table { font-family: var(--font-sans); }
 </section>
 <section class="am-panel" id="panel-G">
 <header class="am-panel-head"><span class="am-panel-id">G</span><h2>Error codes</h2></header>
-<div class="am-panel-body"><div class="am-md"><p>Every non-2xx response is RFC 9457 <code>application/problem+json</code> with top-level <code>code</code> and <code>requestId</code>. One <code>SchedulerGlobalHandler</code> maps exceptions from one <code>ErrorCode</code> enum. It also sets the request attribute <code>kuss_error_code</code> for the audit row. No stack trace, class name or SQL reaches <code>detail</code>.</p>
+<div class="am-panel-body"><div class="am-md"><p>Every non-2xx response is RFC 9457 <code>application/problem+json</code> with top-level <code>code</code> and <code>requestId</code>. One <code>SchedulerGlobalHandler</code> maps exceptions from one <code>ErrorCode</code> enum. It also sets the request attribute <code>kuss_error_code</code> for the audit row. No stack trace, class name or SQL reaches <code>detail</code>; a validation error names each invalid field. <code>/error</code> and requests Tomcat rejects before the app also answer with a ProblemDetail and a <code>KUSS_*</code> code (Tomcat-level ones carry no <code>requestId</code>).</p>
 <div class="am-table-wrap"><table>
 <thead>
 <tr>
@@ -989,7 +990,7 @@ html[data-theme="paper"] .am-md table { font-family: var(--font-sans); }
 <tr>
 <td><code>KUSS_APPOINTMENT_ALREADY_STARTED</code></td>
 <td>409</td>
-<td>Cancel of an appointment whose start time has passed</td>
+<td>Cancel of a confirmed appointment at or after its start time</td>
 </tr>
 <tr>
 <td><code>KUSS_IDEMPOTENCY_KEY_MISMATCH</code></td>
@@ -999,7 +1000,12 @@ html[data-theme="paper"] .am-md table { font-family: var(--font-sans); }
 <tr>
 <td><code>KUSS_INTERNAL_ERROR</code></td>
 <td>500</td>
-<td>Unhandled error, retry cap, or no DB connection; sanitized detail</td>
+<td>Unhandled error or the booking retry cap; sanitized detail</td>
+</tr>
+<tr>
+<td><code>KUSS_SERVICE_BUSY</code></td>
+<td>503</td>
+<td>No free DB connection, a statement timeout, or the 10 s booking deadline, on every endpoint; sent with <code>Retry-After: 1</code></td>
 </tr>
 </tbody></table></div>
 </div></div>
@@ -1019,8 +1025,8 @@ html[data-theme="paper"] .am-md table { font-family: var(--font-sans); }
 <li>Run at startup in a <code>SmartLifecycle</code> with phase <code>Integer.MIN_VALUE</code>, before the web server listens.</li>
 <li>Run daily at 00:05 UTC with <code>@Scheduled</code>.</li>
 <li>Create day partitions D to D+7 with <code>CREATE TABLE IF NOT EXISTS … PARTITION OF request_audit</code>.</li>
-<li>Drop day partitions older than D−14 with <code>DROP TABLE IF EXISTS</code>.</li>
-<li>Delete DEFAULT rows older than D−14, and <code>idempotency_key</code> rows older than 24 hours.</li>
+<li>Drop day partitions older than six months (<code>Period.ofMonths(6)</code>) with <code>DROP TABLE IF EXISTS</code>.</li>
+<li>Delete DEFAULT rows older than six months, and <code>idempotency_key</code> rows older than 24 hours.</li>
 <li>Catch and log each step at WARN. Every statement is idempotent, so N instances are safe.</li>
 </ol>
 <p>Partition names come only from dates or from <code>pg_class</code> names that match <code>^request_audit_p[0-9]{8}$</code>. The job never alters columns, indexes or constraints, because partitions inherit them from the parent.</p>
@@ -1414,6 +1420,59 @@ html[data-theme="paper"] .am-md table { font-family: var(--font-sans); }
 <td>One place per message and name, no drift between duplicates</td>
 </tr>
 </tbody></table></div>
+<p><strong>KUSS-04 implementation, 2026-10-31 to 2026-11-01</strong> (plan.md &quot;Execution and review&quot;; these rows override older ones for the current state)</p>
+<div class="am-table-wrap"><table>
+<thead>
+<tr>
+<th>Date</th>
+<th>Topic</th>
+<th>Agent selection</th>
+<th>Developer decision</th>
+<th>Tag</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>2026-10-31</td>
+<td>Cancel locking</td>
+<td>Row lock with <code>SELECT … FOR UPDATE</code> (A-023 #2)</td>
+<td>No explicit locks anywhere; cancel is one atomic conditional <code>UPDATE … WHERE status = CONFIRMED AND start_time &gt; now</code></td>
+<td>overrides</td>
+<td>Do not lock; use an atomic conditional update</td>
+</tr>
+<tr>
+<td>2026-10-31</td>
+<td>Data access</td>
+<td>JPA reads + <code>JdbcClient</code> writes</td>
+<td>Spring Data JPA only; <code>EntityManager</code> only for the partition DDL in <code>MaintenanceServiceImpl</code></td>
+<td>overrides</td>
+<td>One data-access style</td>
+</tr>
+<tr>
+<td>2026-10-31</td>
+<td>Overload</td>
+<td><code>503</code> on booking only; pool timeout elsewhere gives 500</td>
+<td><code>503 KUSS_SERVICE_BUSY</code> + <code>Retry-After: 1</code> on every endpoint, for pool exhaustion and statement timeouts</td>
+<td>overrides</td>
+<td>Overload is retryable on every endpoint</td>
+</tr>
+<tr>
+<td>2026-10-31</td>
+<td>Catalog JSON</td>
+<td><code>active</code> on bays and technicians</td>
+<td><code>isActive</code> (column stays <code>active</code>); <strong>breaking API change</strong></td>
+<td>overrides</td>
+<td>Boolean fields start with <code>is</code></td>
+</tr>
+<tr>
+<td>2026-11-01</td>
+<td>Audit retention</td>
+<td>14-day retention (row 2026-10-30 above)</td>
+<td>Six months (<code>Period.ofMonths(6)</code>): older partitions dropped, older DEFAULT rows deleted</td>
+<td>overrides</td>
+<td>Audit data is kept for six months</td>
+</tr>
+</tbody></table></div>
 </div></div>
 </section>
 <section class="am-panel" id="panel-J">
@@ -1632,15 +1691,16 @@ REQUEST_AUDIT
 3. Claim the key first. The hash is SHA-256 over canonical fields, so reformatted JSON or an equivalent offset replays.
 4. Run the vehicle `EXISTS` precheck before capacity. A booked vehicle on a full slot gets `KUSS_VEHICLE_ALREADY_BOOKED`, not `KUSS_NO_CAPACITY`.
 5. Pick a random free bay and the qualified technician with the fewest confirmed minutes that local day.
-6. Insert with `JdbcClient`, then store the response in the key row in the same transaction.
+6. Insert with `saveAndFlush` on `AppointmentRepository` (JPA), then store the response in the key row with one conditional `UPDATE` (`IdempotencyKeyRepository.complete`) in the same transaction.
 7. On `23P01` for bay or technician, or on `40P01`, roll back and start a new attempt. The fresh snapshot sees the winner, so that resource drops out.
 8. A failure such as `KUSS_NO_CAPACITY` rolls back the claim too, so a retry with the same key runs fresh.
 
 ```callout warn Deadlock root cause (40P01)
-PostgreSQL checks an exclusion constraint after it inserts its own index entry. Two concurrent conflicting inserts can each wait on the other transaction. After `deadlock_timeout` (100 ms) PostgreSQL aborts one with `40P01`. Unique B-tree indexes avoid this with speculative insertion, but exclusion constraints do not. The retry loop handles it, and tests never assert zero deadlock retries.
+PostgreSQL checks an exclusion constraint after it inserts its own index entry. Two concurrent conflicting inserts can each wait on the other transaction. After `deadlock_timeout` (100 ms) PostgreSQL aborts one with `40P01`. Unique B-tree indexes avoid this with speculative insertion, but exclusion constraints do not. The retry loop handles it, and tests never assert zero deadlock retries. `deadlock_timeout=100ms` is a required setting for every deployment, because the 1.6–3.2 s backoff is sized for it.
 ```
 
-- **Bounds:** a cap of 100 attempts or no free DB connection (Hikari `connection-timeout` 3 s in `prod`) gives 500 `KUSS_INTERNAL_ERROR`.
+- **Backoff:** a `40P01` victim waits a random 1.6–3.2 s outside any transaction (3.2–6.4 s after its next deadlock) before it retries.
+- **Bounds:** no free DB connection (Hikari `connection-timeout` 3 s in `prod`), a statement timeout or the 10 s booking deadline gives 503 `KUSS_SERVICE_BUSY` with `Retry-After: 1`. The cap of 100 attempts gives 500 `KUSS_INTERNAL_ERROR`.
 - **Metric:** `scheduler.booking.gist_retries{conflict_type=bay|technician|deadlock}`.
 
 ## E Availability read path
@@ -1656,19 +1716,19 @@ PostgreSQL checks an exclusion constraint after it inserts its own index entry. 
 Response: `{dealershipId, date, serviceTypeCode, timezone, slots: [{startTime, availableCapacity}]}`. `startTime` carries the dealership offset. Booking uses the same `candidateStarts` list as its only grid and hours check. A timer `scheduler.availability.query.duration` measures each call.
 
 ## F Cancel path
-`POST /api/v1/appointments/{id}/cancel` with `Idempotency-Key`, in one `@Transactional` call.
+`POST /api/v1/appointments/{id}/cancel` with `Idempotency-Key`, in one `@Transactional(timeout = 5)` call. No explicit locks anywhere.
 
 1. Claim the key: replay, 422 on a different hash, 409 `KUSS_IDEMPOTENCY_IN_FLIGHT` on a concurrent claim.
-2. Lock the row with `SELECT … FOR UPDATE` (`JdbcClient`). A missing row gives 404 `KUSS_RESOURCE_NOT_FOUND`.
-3. Return 200 with the current state when the row is already `CANCELLED`.
-4. Return 409 `KUSS_APPOINTMENT_ALREADY_STARTED` when `start_time ≤ now`.
-5. Run `UPDATE … SET status = &#39;CANCELLED&#39;, cancelled_at = now WHERE id = :id AND status = &#39;CONFIRMED&#39;`.
+2. Run one atomic conditional JPQL `UPDATE … SET status = &#39;CANCELLED&#39;, cancelled_at = now WHERE id = :id AND status = &#39;CONFIRMED&#39; AND start_time &gt; now` (`cancelIfConfirmedAndNotStarted`). No read locks the row first; a second canceller waits for the first to commit and matches nothing.
+3. Load the appointment. A missing row gives 404 `KUSS_RESOURCE_NOT_FOUND`.
+4. Return 409 `KUSS_APPOINTMENT_ALREADY_STARTED` when the update matched nothing and the row is still `CONFIRMED` (`start_time ≤ now`).
+5. Otherwise (cancelled just now, or already `CANCELLED`) return 200 with the current state.
 6. Store the 200 response in the key row and commit.
 
 The partial constraints release the bay and the technician as soon as the cancel commits.
 
 ## G Error codes
-Every non-2xx response is RFC 9457 `application/problem+json` with top-level `code` and `requestId`. One `SchedulerGlobalHandler` maps exceptions from one `ErrorCode` enum. It also sets the request attribute `kuss_error_code` for the audit row. No stack trace, class name or SQL reaches `detail`.
+Every non-2xx response is RFC 9457 `application/problem+json` with top-level `code` and `requestId`. One `SchedulerGlobalHandler` maps exceptions from one `ErrorCode` enum. It also sets the request attribute `kuss_error_code` for the audit row. No stack trace, class name or SQL reaches `detail`; a validation error names each invalid field. `/error` and requests Tomcat rejects before the app also answer with a ProblemDetail and a `KUSS_*` code (Tomcat-level ones carry no `requestId`).
 
 | Code | HTTP | Meaning |
 |---|---|---|
@@ -1678,9 +1738,10 @@ Every non-2xx response is RFC 9457 `application/problem+json` with top-level `co
 | `KUSS_VEHICLE_ALREADY_BOOKED` | 409 | The vehicle already has an overlapping confirmed booking (precheck or constraint) |
 | `KUSS_NO_CAPACITY` | 409 | No free bay and qualified technician pair for the whole duration |
 | `KUSS_IDEMPOTENCY_IN_FLIGHT` | 409 | Another request with the same key holds the claim |
-| `KUSS_APPOINTMENT_ALREADY_STARTED` | 409 | Cancel of an appointment whose start time has passed |
+| `KUSS_APPOINTMENT_ALREADY_STARTED` | 409 | Cancel of a confirmed appointment at or after its start time |
 | `KUSS_IDEMPOTENCY_KEY_MISMATCH` | 422 | Same key, different request hash |
-| `KUSS_INTERNAL_ERROR` | 500 | Unhandled error, retry cap, or no DB connection; sanitized detail |
+| `KUSS_INTERNAL_ERROR` | 500 | Unhandled error or the booking retry cap; sanitized detail |
+| `KUSS_SERVICE_BUSY` | 503 | No free DB connection, a statement timeout, or the 10 s booking deadline, on every endpoint; sent with `Retry-After: 1` |
 
 ## H The request_audit lifecycle
 ```flow LR
@@ -1707,8 +1768,8 @@ RequestAuditFilter -&gt; {Audited path?}
 1. Run at startup in a `SmartLifecycle` with phase `Integer.MIN_VALUE`, before the web server listens.
 2. Run daily at 00:05 UTC with `@Scheduled`.
 3. Create day partitions D to D+7 with `CREATE TABLE IF NOT EXISTS … PARTITION OF request_audit`.
-4. Drop day partitions older than D−14 with `DROP TABLE IF EXISTS`.
-5. Delete DEFAULT rows older than D−14, and `idempotency_key` rows older than 24 hours.
+4. Drop day partitions older than six months (`Period.ofMonths(6)`) with `DROP TABLE IF EXISTS`.
+5. Delete DEFAULT rows older than six months, and `idempotency_key` rows older than 24 hours.
 6. Catch and log each step at WARN. Every statement is idempotent, so N instances are safe.
 
 Partition names come only from dates or from `pg_class` names that match `^request_audit_p[0-9]{8}$`. The job never alters columns, indexes or constraints, because partitions inherit them from the parent.
@@ -1779,6 +1840,16 @@ Every row keeps the agent&#39;s original selection next to the developer decisio
 | 7 | Schema changes | Flyway V1 / V2 + `ddl-auto: validate` | `validate` kept; `generate-ddl: false`, `clean-disabled: true`, never edit a committed migration; partition job is the only exception | confirms + adds | One auditable schema history; a versioned migration cannot create daily partitions |
 | 8 | Migration file names | `V1__schema.sql`, `V2__seed.sql` | `V&lt;version&gt;__&lt;description&gt;.sql`, sequential integer, verb-first lower snake_case | overrides | The file name says what the migration does |
 | 9 | Constants | Literals inline at each use; attribute keys inside `RequestAuditFilter`; SQL in repositories | Messages and shared names (headers, request/MDC keys, metric names) in `common.constants` `*Constants` classes; one-class literals stay private; SQL stays in repositories | overrides | One place per message and name, no drift between duplicates |
+
+**KUSS-04 implementation, 2026-10-31 to 2026-11-01** (plan.md &quot;Execution and review&quot;; these rows override older ones for the current state)
+
+| Date | Topic | Agent selection | Developer decision | Tag | Reason |
+|---|---|---|---|---|---|
+| 2026-10-31 | Cancel locking | Row lock with `SELECT … FOR UPDATE` (A-023 #2) | No explicit locks anywhere; cancel is one atomic conditional `UPDATE … WHERE status = CONFIRMED AND start_time &gt; now` | overrides | Do not lock; use an atomic conditional update |
+| 2026-10-31 | Data access | JPA reads + `JdbcClient` writes | Spring Data JPA only; `EntityManager` only for the partition DDL in `MaintenanceServiceImpl` | overrides | One data-access style |
+| 2026-10-31 | Overload | `503` on booking only; pool timeout elsewhere gives 500 | `503 KUSS_SERVICE_BUSY` + `Retry-After: 1` on every endpoint, for pool exhaustion and statement timeouts | overrides | Overload is retryable on every endpoint |
+| 2026-10-31 | Catalog JSON | `active` on bays and technicians | `isActive` (column stays `active`); **breaking API change** | overrides | Boolean fields start with `is` |
+| 2026-11-01 | Audit retention | 14-day retention (row 2026-10-30 above) | Six months (`Period.ofMonths(6)`): older partitions dropped, older DEFAULT rows deleted | overrides | Audit data is kept for six months |
 ## J KUSS-04 phases, gates and review flow
 ```timeline v
 01 · 3h | Project skeleton | Wrapper, Spotless + Checkstyle gates, Testcontainers on Podman, compose, Clock bean
