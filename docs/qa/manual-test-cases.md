@@ -485,7 +485,7 @@ J() { sed -n '/^{/p' /tmp/kuss-last | jq -r "$1"; }
    ```sh
    bk case-cf-11 $LONDON $(V 14) ENGINE_DIAGNOSTIC ${DATE}T12:00:00Z
    ```
-   Expect 201; tech 105; `endTime=DATET14:00:00Z`.
+   Expect 201; tech 105; `endTime=DATET14:00:00Z`. Always 201: London has four bays, and the three earlier London bookings in 12:00–14:00 (ID-05, ID-09, ID-11) can block at most three, so one bay stays free for the whole window.
 6. **CF-12 OIL at 11:00Z while tech 105 is busy**
    ```sh
    bk case-cf-12 $LONDON $(V 15) OIL_CHANGE ${DATE}T11:00:00Z; J .technicianId
